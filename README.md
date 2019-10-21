@@ -10,8 +10,8 @@ eventually i want this to be a module you can use to automatically manage
 and create your sifas accounts
 
 # progress
-[x] `/login/startup`: creates a new account
-[x] `/login/login`: log into existing account
+- [x] `/login/startup`: creates a new account
+- [x] `/login/login`: log into existing account
 
 # build and run (linux)
 you need the kotlin compiler (kotlinc) which on void linux is package
