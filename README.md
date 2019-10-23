@@ -12,6 +12,7 @@ and create your sifas accounts
 # progress
 - [x] `/login/startup`: creates a new account
 - [x] `/login/login`: log into existing account
+- [x] properly generating `asset_state` instead of hardcoding it
 
 # build and run (linux)
 you need the kotlin compiler (kotlinc) which on void linux is package
