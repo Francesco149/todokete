@@ -36,9 +36,6 @@ YFMAhTytVk48qO4ViCN3snFs0AURU06niM98MIcEUnj9vj6kOBlOGv4JWQIDAQAB
 const val PackageName = "com.klab.lovelive.allstars"
 const val MasterVersion = "646e6e305660c69f"
 
-fun String.hexStringToByteArray() =
-  chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-
 // md5, sha1, sha256 of the package's signature
 // obtained by running https://github.com/warren-bank/print-apk-signature
 // on the split apk
@@ -61,6 +58,16 @@ val Il2CppSignatures = arrayOf(
   "c4387c429c50c4782ab3df409db3abcfa8fadf79",
   "d30568d1057fecb31a16f4062239c1ec65b9c2beab41b836658b637dcb5a51e4"
 ).map { it.hexStringToByteArray() }
+
+// ------------------------------------------------------------------------
+
+fun ByteArray.toHexString() = joinToString("") { "%02x".format(it) }
+
+fun ByteArray.xor(other: ByteArray) =
+  (zip(other) { a, b -> (a.toInt() xor b.toInt()).toByte() }).toByteArray()
+
+fun String.hexStringToByteArray() =
+  chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
 val kf = KeyFactory.getInstance("RSA")
 val keyBytes = Base64.getDecoder().decode(
@@ -90,16 +97,14 @@ fun publicEncrypt(data: ByteArray): ByteArray {
   return cipher.doFinal(data)
 }
 
-fun ByteArray.toHexString() = joinToString("") { "%02x".format(it) }
-fun ByteArray.xor(other: ByteArray) =
-  (zip(other) { a, b -> (a.toInt() xor b.toInt()).toByte() }).toByteArray()
-
 fun hmacSha1(key: ByteArray, data: ByteArray): String {
   val hmacKey = SecretKeySpec(key, "HmacSHA1")
   val hmac = Mac.getInstance("HmacSHA1")
   hmac.init(hmacKey)
   return hmac.doFinal(data).toHexString()
 }
+
+// ------------------------------------------------------------------------
 
 var requestId = 0
 var sessionKey = StartupKey.toByteArray()
