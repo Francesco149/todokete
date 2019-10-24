@@ -44,7 +44,6 @@ rxIF8+W53BiF8g9m6nCETdRw7RVnzNABevMndCCTD6oQ6a2w0QpoKeT26578UCWtGp74NGg2Q2fH
 YFMAhTytVk48qO4ViCN3snFs0AURU06niM98MIcEUnj9vj6kOBlOGv4JWQIDAQAB
 -----END PUBLIC KEY-----"""
 const val PackageName = "com.klab.lovelive.allstars"
-const val MasterVersion = "646e6e305660c69f"
 
 // md5, sha1, sha256 of the package's signature
 // obtained by running https://github.com/warren-bank/print-apk-signature
@@ -117,6 +116,7 @@ fun hmacSha1(key: ByteArray, data: ByteArray): String {
 
 var requestId = 0
 var sessionKey = StartupKey.toByteArray()
+var masterVersion: String? = null
 
 const val WithMasterVersion = 1 shl 1
 const val WithTime = 1 shl 2
@@ -131,7 +131,7 @@ fun call(
   requestId += 1
   var pathWithQuery = path + "?p=a"
   if ((flags and WithMasterVersion) != 0) {
-    pathWithQuery += "&mv=$MasterVersion"
+    pathWithQuery += "&mv=" + masterVersion!!
   }
   pathWithQuery += "&id=$requestId"
   if (userId != 0) {
@@ -238,15 +238,74 @@ fun prettyPrint(result: String) {
 
 inline fun <reified T> parseResponse(result: String): T? {
   val array = JsonParser.parseString(result).getAsJsonArray()
-  for (x in array) {
-    if (x.isJsonObject()) {
-      return gson.fromJson(x, T::class.java).pp()
-    }
+  array[1].getAsString()?.let { masterVersion = it }
+    ?: run { throw JsonSyntaxException("couldn't parse MasterVersion") }
+  array[3].getAsJsonObject()?.let {
+    return gson.fromJson(it, T::class.java).pp()
   }
   return null
 }
 
 // ------------------------------------------------------------------------
+
+fun generateServiceId(): String {
+  val charset = "0123456789"
+  return "g" +
+    List(21) { Random.nextInt(0, charset.length) }
+    .map(charset::get)
+    .joinToString("")
+}
+
+fun generateMask(): String {
+  val bytes = publicEncrypt(Random.nextBytes(32))
+  return base64Encoder.encodeToString(bytes)
+}
+
+data class FetchGameServiceDataBeforeLoginRequest(
+  val user_id: Int,
+  val service_id: String,
+  val mask: String = generateMask()
+)
+
+data class UserLinkData(
+  val user_id: Int,
+  val authorization_key: String,
+  val name: LocalizedText,
+  val last_login_at: Int,
+  val sns_coin: Int,
+  val terms_of_use_version: Int,
+  val service_user_common_key: ByteArray // TODO: not 100% sure
+)
+
+data class CurrentUserData(
+  val user_id: Int,
+  val name: LocalizedText,
+  val last_login_at: Int,
+  val sns_coin: Int
+)
+
+data class UserLinkDataBeforeLogin(
+  val linked_data: UserLinkData,
+  val current_data: CurrentUserData
+)
+
+data class FetchGameServiceDataBeforeLoginResponse(
+  val data: UserLinkDataBeforeLogin?
+)
+
+fun fetchGameServiceDataBeforeLogin(
+  user_id: Int = -1,
+  service_id: String = generateServiceId()
+): FetchGameServiceDataBeforeLoginResponse? {
+  val result = call(
+    path = "/dataLink/fetchGameServiceDataBeforeLogin",
+    payload = gson.toJson(FetchGameServiceDataBeforeLoginRequest(
+      user_id = user_id,
+      service_id = service_id
+    ), FetchGameServiceDataBeforeLoginRequest::class.java)
+  )
+  return parseResponse<FetchGameServiceDataBeforeLoginResponse>(result)
+}
 
 data class StartupRequest(
   val mask: String,
@@ -815,6 +874,7 @@ fun testAssetState() {
 
 fun main(args: Array<String>) {
   testAssetState()
+  fetchGameServiceDataBeforeLogin()
   val randomBytes = Random.nextBytes(32)
   val startupResponse = startup(randomBytes)!!
   val authKey = base64Decoder.decode(startupResponse.authorization_key)

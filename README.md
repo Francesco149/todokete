@@ -13,6 +13,9 @@ and create your sifas accounts
 - [x] `/login/startup`: creates a new account
 - [x] `/login/login`: log into existing account
 - [x] properly generating `asset_state` instead of hardcoding it
+- [x] `/dataLink/fetchGameServiceDataBeforeLogin` gets existing accounts
+  associated with a `service_id`, also used to get MasterVersion on
+  startup
 
 # build and run (linux)
 you need the kotlin compiler (kotlinc) which on void linux is package
