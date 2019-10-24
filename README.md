@@ -22,8 +22,11 @@ my build script will automatically download and set up dependencies
 
 ```
 # build and run
-./build.sh
+./build.sh | tee -a output.log
 ```
+
+it's recommended to save output to a log as some responses are very large
+to read with just terminal scrollback
 
 # rationale
 why kotlin? it just so happens that the http library used by the game is

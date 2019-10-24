@@ -10,6 +10,16 @@
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
+import com.google.gson.JsonSyntaxException
+import com.google.gson.TypeAdapter
+import com.google.gson.TypeAdapterFactory
+import com.google.gson.reflect.TypeToken
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import com.google.gson.stream.JsonWriter
+import com.tylerthrailkill.helpers.prettyprint.pp
+import java.io.IOException
+import java.lang.reflect.ParameterizedType
 import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.MessageDigest
@@ -79,7 +89,6 @@ val keyBytes = Base64.getDecoder().decode(
 val keySpecX509 = X509EncodedKeySpec(keyBytes)
 val pubKey = kf.generatePublic(keySpecX509)
 
-val gson = Gson()
 val base64Encoder = Base64.getEncoder()
 val base64Decoder = Base64.getDecoder()
 
@@ -152,13 +161,92 @@ fun call(
     for (i in 0..headers.size() - 1) {
       val name = headers.name(i)
       val value = headers.value(i)
-      println("<- $name: $value")
+      println("$name: $value")
     }
   }
   val s = response.body()!!.string()
-  println("<- $s")
+  prettyPrint(s)
   return s
 }
+
+// ------------------------------------------------------------------------
+
+val gson = GsonBuilder()
+  .registerTypeAdapterFactory(JsonMapAdapterFactory())
+  .create()
+
+// generics are a mistake that cause people to come up with useless
+// 200iq solutions to problems that don't exist
+
+class JsonMapAdapterFactory : TypeAdapterFactory {
+  // sifas json maps are laid out like so: [ key, value, key, value, ... ]
+  // so we need to override the built in map type adapter
+
+  override fun <T> create(gson: Gson, t: TypeToken<T>): TypeAdapter<T>? {
+    if (!Map::class.java.isAssignableFrom(t.getRawType())) { return null }
+    if (t.getType() !is ParameterizedType) { return null }
+    val tk = (t.getType() as ParameterizedType).getActualTypeArguments()[0]
+    val tv = (t.getType() as ParameterizedType).getActualTypeArguments()[1]
+    val keyAdapter = gson.getAdapter(TypeToken.get(tk))
+    val valueAdapter = gson.getAdapter(TypeToken.get(tv))
+    return Adapter(keyAdapter, valueAdapter) as TypeAdapter<T>
+  }
+
+  class Adapter<Tk, Tv>(
+    keyAdapter: TypeAdapter<Tk>,
+    valueAdapter: TypeAdapter<Tv>
+  ) : TypeAdapter<Map<Tk, Tv>>() {
+    val keyAdapter = keyAdapter
+    val valueAdapter = valueAdapter
+
+    @Throws(IOException::class)
+    override fun read(reader: JsonReader): Map<Tk, Tv>? {
+      when (reader.peek()) {
+        JsonToken.NULL -> {
+          reader.nextNull()
+          return null
+        }
+        JsonToken.BEGIN_ARRAY -> {
+          val res = HashMap<Tk, Tv>()
+          reader.beginArray()
+          while (reader.hasNext()) {
+            val key = keyAdapter.read(reader)
+            val value = valueAdapter.read(reader)
+            if (res.put(key, value) != null) {
+              throw JsonSyntaxException("duplicate key: $key")
+            }
+          }
+          reader.endArray()
+          return res
+        }
+        else -> throw JsonSyntaxException("expected array for json map")
+      }
+    }
+
+    @Throws(IOException::class)
+    override fun write(writer: JsonWriter, value: Map<Tk, Tv>?) {
+      throw JsonSyntaxException("not implemented")
+    }
+  }
+}
+
+fun prettyPrint(result: String) {
+  val pp = GsonBuilder().setPrettyPrinting().create()
+  val array = JsonParser.parseString(result).getAsJsonArray()
+  println(pp.toJson(array))
+}
+
+inline fun <reified T> parseResponse(result: String): T? {
+  val array = JsonParser.parseString(result).getAsJsonArray()
+  for (x in array) {
+    if (x.isJsonObject()) {
+      return gson.fromJson(x, T::class.java).pp()
+    }
+  }
+  return null
+}
+
+// ------------------------------------------------------------------------
 
 data class StartupRequest(
   val mask: String,
@@ -185,13 +273,7 @@ fun startup(randomBytes: ByteArray): StartupResponse? {
     ), StartupRequest::class.java),
     flags = WithMasterVersion or WithTime
   )
-  val array = JsonParser.parseString(result).getAsJsonArray()
-  for (x in array) {
-    if (x.isJsonObject()) {
-      return gson.fromJson(x, StartupResponse::class.java)
-    }
-  }
-  return null
+  return parseResponse<StartupResponse>(result)
 }
 
 data class LoginRequest(
@@ -201,7 +283,436 @@ data class LoginRequest(
   val asset_state: String
 )
 
-@ExperimentalUnsignedTypes
+data class LocalizedText(val dot_under_text: String) {
+  override fun toString(): String = dot_under_text
+}
+
+data class UserStatus(
+  val name: LocalizedText,
+  val nickname: LocalizedText,
+  val last_login_at: Int,
+  val rank: Int,
+  val exp: Int,
+  val message: LocalizedText,
+  val recommend_card_master_id: Int,
+  val max_friend_num: Int,
+  val live_point_full_at: Int,
+  val live_point_broken: Int,
+  val activity_point_count: Int,
+  val activity_point_reset_at: Int,
+  val activity_point_payment_recovery_daily_count: Int,
+  val activity_point_payment_recovery_daily_reset_at: Int,
+  val game_money: Int,
+  val card_exp: Int,
+  val free_sns_coin: Int,
+  val apple_sns_coin: Int,
+  val google_sns_coin: Int,
+  val birth_date: Int?,
+  val birth_month: Int?,
+  val birth_day: Int?,
+  val latest_live_deck_id: Int,
+  val main_lesson_deck_id: Int,
+  val favorite_member_id: Int,
+  val last_live_difficulty_id: Int,
+  val lp_magnification: Int,
+  val emblem_id: Int,
+  val device_token: String,
+  val tutorial_phase: Int,
+  val tutorial_end_at: Int,
+  val login_days: Int,
+  val navi_tap_count: Int,
+  val navi_tap_recover_at: Int,
+  val is_auto_mode: Boolean,
+  val max_score_live_difficulty_master_id: Int?,
+  val live_max_score: Int,
+  val max_combo_live_difficulty_master_id: Int?,
+  val live_max_combo: Int,
+  val lesson_resume_status: Int,
+  val accessory_box_additional: Int,
+  val terms_of_use_version: Int,
+  val bootstrap_sifid_check_at: Int
+)
+
+data class UserMember(
+  val member_master_id: Int,
+  val custom_background_master_id: Int,
+  val suit_master_id: Int,
+  val love_point: Int,
+  val love_point_limit: Int,
+  val love_level: Int,
+  val view_status: Int,
+  val is_new: Boolean
+)
+
+data class UserCard(
+  val card_master_id: Int,
+  val level: Int,
+  val exp: Int,
+  val love_point: Int,
+  val is_favorite: Boolean,
+  val is_awakening: Boolean,
+  val is_awakening_image: Boolean,
+  val is_all_training_activated: Boolean,
+  val max_free_passive_skill: Int,
+  val grade: Int,
+  val training_life: Int,
+  val training_attack: Int,
+  val training_dexterity: Int,
+  val active_skill_level: Int,
+  val passive_skill_a_level: Int,
+  val passive_skill_b_level: Int,
+  val passive_skill_c_level: Int,
+  val additional_passive_skill_1_id: Int,
+  val additional_passive_skill_2_id: Int,
+  val additional_passive_skill_3_id: Int,
+  val additional_passive_skill_4_id: Int,
+  val acquired_at: Int,
+  val is_new: Boolean
+)
+
+data class UserSuit(
+  val suit_master_id: Int,
+  val is_new: Boolean
+)
+
+data class UserLiveDeck(
+  val user_live_deck_id: Int,
+  val name: LocalizedText,
+  val card_master_id_1: Int?,
+  val card_master_id_2: Int?,
+  val card_master_id_3: Int?,
+  val card_master_id_4: Int?,
+  val card_master_id_5: Int?,
+  val card_master_id_6: Int?,
+  val card_master_id_7: Int?,
+  val card_master_id_8: Int?,
+  val card_master_id_9: Int?,
+  val suit_master_id_1: Int?,
+  val suit_master_id_2: Int?,
+  val suit_master_id_3: Int?,
+  val suit_master_id_4: Int?,
+  val suit_master_id_5: Int?,
+  val suit_master_id_6: Int?,
+  val suit_master_id_7: Int?,
+  val suit_master_id_8: Int?,
+  val suit_master_id_9: Int?
+)
+
+data class UserLiveParty(
+  val party_id: Int,
+  val user_live_deck_id: Int,
+  val name: LocalizedText,
+  val icon_master_id: Int,
+  val card_master_id_1: Int?,
+  val card_master_id_2: Int?,
+  val card_master_id_3: Int?
+)
+
+data class UserLessonDeck(
+  val user_lesson_deck_id: Int,
+  val name: String,
+  val card_master_id_1: Int?,
+  val card_master_id_2: Int?,
+  val card_master_id_3: Int?,
+  val card_master_id_4: Int?,
+  val card_master_id_5: Int?,
+  val card_master_id_6: Int?,
+  val card_master_id_7: Int?,
+  val card_master_id_8: Int?,
+  val card_master_id_9: Int?
+)
+
+data class UserLiveMvDeck(
+  val live_master_id: Int,
+  val member_master_id_1: Int?,
+  val member_master_id_2: Int?,
+  val member_master_id_3: Int?,
+  val member_master_id_4: Int?,
+  val member_master_id_5: Int?,
+  val member_master_id_6: Int?,
+  val member_master_id_7: Int?,
+  val member_master_id_8: Int?,
+  val member_master_id_9: Int?,
+  val suit_master_id_1: Int?,
+  val suit_master_id_2: Int?,
+  val suit_master_id_3: Int?,
+  val suit_master_id_4: Int?,
+  val suit_master_id_5: Int?,
+  val suit_master_id_6: Int?,
+  val suit_master_id_7: Int?,
+  val suit_master_id_8: Int?,
+  val suit_master_id_9: Int?
+)
+
+data class UserLiveDifficulty(
+  val live_difficulty_id: Int,
+  val max_score: Int,
+  val max_combo: Int,
+  val play_count: Int,
+  val clear_count: Int,
+  val cancel_count: Int,
+  val not_cleared_count: Int,
+  val is_full_combo: Boolean,
+  val cleared_difficulty_achievement_1: Int?,
+  val cleared_difficulty_achievement_2: Int?,
+  val cleared_difficulty_achievement_3: Int?,
+  val enable_autoplay: Boolean,
+  val is_autoplay: Boolean,
+  val is_new: Boolean
+)
+
+data class UserStoryMain(val story_main_master_id: Int)
+
+data class UserStoryMainSelected(
+  val story_main_cell_id: Int,
+  val selected_id: Int
+)
+
+data class UserVoice(
+  val navi_voice_master_id: String,
+  val is_new: Boolean
+)
+
+data class UserEmblem(
+  val emblem_m_id: String,
+  val is_new: Boolean,
+  val emblem_param: String,
+  val acquired_at: Int
+)
+
+data class UserGachaTicket(
+  val ticket_master_id: Int,
+  val normal_amount: Int,
+  val apple_amount: Int,
+  val google_amount: Int
+)
+
+data class UserGachaPoint(
+  val point_master_id: Int,
+  val amount: Int
+)
+
+data class UserLessonEnhancingItem(
+  val enhancing_item_id: Int,
+  val amount: Int
+)
+
+data class UserTrainingMaterial(
+  val training_material_master_id: Int,
+  val amount: Int
+)
+
+data class UserGradeUpItem(
+  val item_master_id: Int,
+  val amount: Int
+)
+
+data class UserCustomBackground(
+  val custom_background_master_id: Int,
+  val is_new: Boolean
+)
+
+data class UserStorySide(
+  val story_side_master_id: Int,
+  val is_new: Boolean,
+  val acquired_at: Int
+)
+
+data class UserStoryMember(
+  val story_member_master_id: Int,
+  val is_new: Boolean,
+  val acquired_at: Int
+)
+
+data class UserRecoveryLp(
+  val recovery_lp_master_id: Int,
+  val amount: Int
+)
+
+data class UserRecoveryAp(
+  val recovery_ap_master_id: Int,
+  val amount: Int
+)
+
+data class UserMission(
+  val mission_m_id: Int,
+  val is_new: Boolean,
+  val mission_count: Int,
+  val is_cleared: Boolean,
+  val is_received_reward: Boolean,
+  val new_expired_at: Int
+)
+
+data class UserDailyMission(
+  val mission_m_id: Int,
+  val is_new: Boolean,
+  val mission_start_count: Int,
+  val mission_count: Int,
+  val is_cleared: Boolean,
+  val is_received_reward: Boolean,
+  val cleared_expired_at: Int
+)
+
+data class UserWeeklyMission(
+  val mission_m_id: Int,
+  val is_new: Boolean,
+  val mission_start_count: Int,
+  val mission_count: Int,
+  val is_cleared: Boolean,
+  val is_received_reward: Boolean,
+  val cleared_expired_at: Int,
+  val new_expired_at: Int
+)
+
+data class UserInfoTriggerBasic(
+  val trigger_id: Int,
+  val info_trigger_type: Int,
+  val limit_at: Int,
+  val description: String,
+  val param_int: Int?
+)
+
+data class UserInfoTriggerCardGradeUp(
+  val trigger_id: Int,
+  val card_master_id: Int,
+  val before_love_level_limit: Int,
+  val after_love_level_limit: Int
+)
+
+data class UserInfoTriggerMemberLoveLevelUp(
+  val trigger_id: Int,
+  val member_master_id: Int,
+  val before_love_level: Int
+)
+
+data class UserAccessory(
+  val user_accessory_id: Int,
+  val accessory_master_id: Int,
+  val level: Int,
+  val exp: Int,
+  val grade: Int,
+  val attribute: Int,
+  val passive_skill_1_id: Int?,
+  val passive_skill_1_level: Int?,
+  val passive_skill_2_id: Int?,
+  val passive_skill_2_level: Int?,
+  val is_lock: Boolean,
+  val is_new: Boolean,
+  val acquired_at: Int
+)
+
+data class UserAccessoryLevelUpItem(
+  val accessory_level_up_item_master_id: Int,
+  val amount: Int
+)
+
+data class UserAccessoryRarityUpItem(
+  val accessory_rarity_up_item_master_id: Int,
+  val amount: Int
+)
+
+data class UserUnlockScene(
+  val unlock_scene_type: Int,
+  val status: Int
+)
+
+data class UserSceneTips(val scene_tips_type: Int)
+data class UserRuleDescription(val display_status: Int)
+data class UserExchangeEventPoint(val amount: Int)
+
+data class UserSchoolIdolFestivalIdRewardMission(
+  val school_idol_festival_id_reward_mission_master_id: Int,
+  val is_cleared: Boolean,
+  val is_new: Boolean,
+  val count: Int
+)
+
+data class UserGpsPresentReceived(val campaign_id: Int)
+data class UserEventMarathon(
+  val event_master_id: Int,
+  val event_point: Int,
+  val opened_story_number: Int,
+  val read_story_number: Int
+)
+
+data class UserLiveSkipTicket(
+  val ticket_master_id: Int,
+  val amount: Int
+)
+
+data class UserEventMarathonBooster(
+  val event_item_id: Int,
+  val amount: Int
+)
+
+data class UserReferenceBook(val reference_book_id: Int)
+
+data class UserReviewRequestProcessFlow(
+  val review_request_trigger_type: Int,
+  val review_request_status_type: Int
+)
+
+data class UserModel(
+  val user_status: UserStatus,
+  val user_member_by_member_id: Map<Int, UserMember>,
+  val user_card_by_card_id: Map<Int, UserCard>,
+  val user_suit_by_suit_id: Map<Int, UserSuit>,
+  val user_live_deck_by_id: Map<Int, UserLiveDeck>,
+  val user_live_party_by_id: Map<Int, UserLiveParty>,
+  val user_lesson_deck_by_id: Map<Int, UserLessonDeck>,
+  val user_live_mv_deck_by_id: Map<Int, UserLiveMvDeck>,
+  val user_live_difficulty_by_difficulty_id: Map<Int, UserLiveDifficulty>,
+  val user_story_main_by_story_main_id: Map<Int, UserStoryMain>,
+  val user_story_main_selected_by_story_main_cell_id:
+    Map<Int, UserStoryMainSelected>,
+  val user_voice_by_voice_id: Map<Int, UserVoice>,
+  val user_emblem_by_emblem_id: Map<Int, UserEmblem>,
+  val user_gacha_ticket_by_ticket_id: Map<Int, UserGachaTicket>,
+  val user_gacha_point_by_point_id: Map<Int, UserGachaPoint>,
+  val user_lesson_enhancing_item_by_item_id:
+    Map<Int, UserLessonEnhancingItem>,
+  val user_training_material_by_item_id: Map<Int, UserTrainingMaterial>,
+  val user_grade_up_item_by_item_id: Map<Int, UserGradeUpItem>,
+  val user_custom_background_by_id: Map<Int, UserCustomBackground>,
+  val user_story_side_by_id: Map<Int, UserStorySide>,
+  val user_story_member_by_id: Map<Int, UserStoryMember>,
+  val user_recovery_lp_by_id: Map<Int, UserRecoveryLp>,
+  val user_recovery_ap_by_id: Map<Int, UserRecoveryAp>,
+  val user_mission_by_mission_id: Map<Int, UserMission>,
+  val user_daily_mission_by_mission_id: Map<Int, UserDailyMission>,
+  val user_weekly_mission_by_mission_id: Map<Int, UserWeeklyMission>,
+  val user_info_trigger_basic_by_trigger_id:
+    Map<Int, UserInfoTriggerBasic>,
+  val user_info_trigger_card_grade_up_by_trigger_id:
+    Map<Int, UserInfoTriggerCardGradeUp>,
+  val user_info_trigger_member_love_level_up_by_trigger_id:
+    Map<Int, UserInfoTriggerMemberLoveLevelUp>,
+  val user_accessory_by_user_accessory_id: Map<Int, UserAccessory>,
+  val user_accessory_level_up_item_by_id:
+    Map<Int, UserAccessoryLevelUpItem>,
+  val user_accessory_rarity_up_item_by_id:
+    Map<Int, UserAccessoryRarityUpItem>,
+  val user_unlock_scenes_by_enum: Map<Int, UserUnlockScene>,
+  val user_scene_tips_by_enum: Map<Int, UserSceneTips>,
+  val user_rule_description_by_id: Map<Int, UserRuleDescription>,
+  val user_exchange_event_point_by_id: Map<Int, UserExchangeEventPoint>,
+  val user_school_idol_festival_id_reward_mission_by_id:
+    Map<Int, UserSchoolIdolFestivalIdRewardMission>,
+  val user_gps_present_received_by_id: Map<Int, UserGpsPresentReceived>,
+  val user_event_marathon_by_event_master_id: Map<Int, UserEventMarathon>,
+  val user_live_skip_ticket_by_id: Map<Int, UserLiveSkipTicket>,
+  val user_event_marathon_booster_by_id:
+    Map<Int, UserEventMarathonBooster>,
+  val user_reference_book_by_id: Map<Int, UserReferenceBook>,
+  val user_review_request_process_flow_by_id:
+    Map<Int, UserReviewRequestProcessFlow>
+)
+
+data class LoginResponse(
+  val session_key: String,
+  val user_model: UserModel
+)
+
 fun assetStateLogGenerateV2(randomBytes64: String): String {
   val libHashChar = (randomBytes64[0].toInt() and 1) + 1
   val libHashType = randomBytes64[libHashChar].toInt().rem(3)
@@ -273,8 +784,7 @@ fun assetStateLogGenerateV2(randomBytes64: String): String {
 
 var authCount = 0
 
-@ExperimentalUnsignedTypes
-fun login(userId: Int) {
+fun login(userId: Int): LoginResponse? {
   authCount += 1
   val randomBytes = Random.nextBytes(32)
   val randomBytes64 = base64Encoder.encodeToString(randomBytes)
@@ -290,12 +800,11 @@ fun login(userId: Int) {
     ), LoginRequest::class.java),
     userId = userId
   )
-  val prettyPrint = GsonBuilder().setPrettyPrinting().create()
-  val array = JsonParser.parseString(result).getAsJsonArray()
-  println(prettyPrint.toJson(array))
+  return parseResponse<LoginResponse>(result)
 }
 
-@ExperimentalUnsignedTypes
+// ------------------------------------------------------------------------
+
 fun testAssetState() {
   val randomBytesBase64 = "CB7tjOEZK6IQJrX93O0BuTjM5txYFmFO8sv1Pq9eAcE="
   val generated = assetStateLogGenerateV2(randomBytesBase64)
@@ -307,8 +816,7 @@ fun testAssetState() {
 fun main(args: Array<String>) {
   testAssetState()
   val randomBytes = Random.nextBytes(32)
-  val startupResponse = startup(randomBytes)
-  println(startupResponse!!)
+  val startupResponse = startup(randomBytes)!!
   val authKey = base64Decoder.decode(startupResponse.authorization_key)
   sessionKey = authKey.xor(randomBytes)
   login(startupResponse.user_id)
