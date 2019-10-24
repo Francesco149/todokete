@@ -767,9 +767,19 @@ data class UserModel(
     Map<Int, UserReviewRequestProcessFlow>
 )
 
+data class LiveResume(
+  val live_difficulty_id: Int,
+  val deck_id: Int
+)
+
 data class LoginResponse(
   val session_key: String,
-  val user_model: UserModel
+  val user_model: UserModel,
+  val is_platform_service_linked: Boolean,
+  val last_timestamp: Int,
+  val cautions: Array<Int>, // TODO: not sure
+  val show_home_caution: Boolean,
+  val live_resume: Map<String, LiveResume> // TODO; not sure
 )
 
 fun assetStateLogGenerateV2(randomBytes64: String): String {
