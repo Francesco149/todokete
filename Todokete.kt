@@ -116,21 +116,19 @@ fun hmacSha1(key: ByteArray, data: ByteArray): String {
 
 // ------------------------------------------------------------------------
 
-var requestId = 0
+var requestId = 0 // incremented after every successful request
 var sessionKey = StartupKey.toByteArray()
 var randomBytes = Random.nextBytes(32) // regenerated on login/startup
-var masterVersion: String? = null
+var userId = 0 // obtained after startup, or known before login
+var flags = 0
+var masterVersion: String? = null // obtained after the first request
 
+// flags
 const val WithMasterVersion = 1 shl 1
 const val WithTime = 1 shl 2
 const val PrintHeaders = 1 shl 3
 
-fun call(
-  path: String,
-  payload: String,
-  flags: Int = 0,
-  userId: Int = 0
-): String {
+fun call(path: String, payload: String): String {
   requestId += 1
   var pathWithQuery = path + "?p=a"
   if ((flags and WithMasterVersion) != 0) {
@@ -241,8 +239,11 @@ fun prettyPrint(result: String) {
 
 inline fun <reified T> parseResponse(result: String): T? {
   val array = JsonParser.parseString(result).getAsJsonArray()
-  array[1].getAsString()?.let { masterVersion = it }
-    ?: run { throw JsonSyntaxException("couldn't parse MasterVersion") }
+  array[1].getAsString()?.let {
+    masterVersion = it
+    flags = flags or WithMasterVersion
+  }
+  ?: run { throw JsonSyntaxException("couldn't parse MasterVersion") }
   array[3].getAsJsonObject()?.let {
     return gson.fromJson(it, T::class.java).pp()
   }
@@ -301,7 +302,7 @@ fun fetchGameServiceDataBeforeLogin(
     payload = gson.toJson(FetchGameServiceDataBeforeLoginRequest(
       user_id = user_id,
       service_id = service_id
-    ), FetchGameServiceDataBeforeLoginRequest::class.java)
+    ))
   )
   return parseResponse<FetchGameServiceDataBeforeLoginResponse>(result)
 }
@@ -329,8 +330,7 @@ fun startup(): StartupResponse? {
       mask = mask,
       resemara_detection_identifier = resemara,
       time_difference = 3600
-    ), StartupRequest::class.java),
-    flags = WithMasterVersion or WithTime
+    ))
   )
   return parseResponse<StartupResponse>(result)
 }
@@ -853,7 +853,9 @@ fun assetStateLogGenerateV2(randomBytes64: String): String {
 
 var authCount = 0
 
-fun login(userId: Int): LoginResponse? {
+fun login(id: Int): LoginResponse? {
+  userId = id
+  flags = flags or WithTime
   authCount += 1
   randomBytes = Random.nextBytes(32)
   val randomBytes64 = base64Encoder.encodeToString(randomBytes)
@@ -866,22 +868,19 @@ fun login(userId: Int): LoginResponse? {
       auth_count = authCount,
       mask = mask,
       asset_state = assetStateLogGenerateV2(randomBytes64)
-    ), LoginRequest::class.java),
-    userId = userId
+    ))
   )
   return parseResponse<LoginResponse>(result)
 }
 
 data class TermsAgreementRequest(val terms_version: Int)
 
-fun termsAgreement(userId: Int, termsVersion: Int): LoginResponse? {
+fun termsAgreement(termsVersion: Int): LoginResponse? {
   val result = call(
     path = "/terms/agreement",
     payload = gson.toJson(TermsAgreementRequest(
       terms_version = termsVersion
-    ), TermsAgreementRequest::class.java),
-    userId = userId,
-    flags = WithMasterVersion or WithTime
+    ))
   )
   // yes this is supposed to be a LoginResponse, except it will contain
   // much less info than the one from /login/login
@@ -939,8 +938,7 @@ fun setUserProfile(
   name: String? = null,
   nickname: String? = null,
   message: String? = null,
-  deviceToken: String? = null,
-  userId: Int
+  deviceToken: String? = null
 ): LoginResponse? {
   val result = call(
     path = "/userProfile/setProfile",
@@ -949,9 +947,7 @@ fun setUserProfile(
       nickname = nickname,
       message = message,
       device_token = deviceToken
-    )),
-    userId = userId,
-    flags = WithMasterVersion or WithTime
+    ))
   )
   return parseResponse<LoginResponse>(result)
 }
@@ -963,17 +959,14 @@ data class SetUserProfileBirthDayRequest(
 
 fun setUserProfileBirthDay(
   month: Int = Random.nextInt(1, 13),
-  day: Int = Random.nextInt(1, 29),
-  userId: Int
+  day: Int = Random.nextInt(1, 29)
 ): LoginResponse? {
   var result = call(
     "/userProfile/setProfileBirthday",
     payload = gson.toJson(SetUserProfileBirthDayRequest(
       month = month,
       day = day
-    )),
-    userId = userId,
-    flags = WithMasterVersion or WithTime
+    ))
   )
   return parseResponse<LoginResponse>(result)
 }
@@ -1005,21 +998,18 @@ fun main(args: Array<String>) {
   randomDelay(9000)
   var terms = loginResponse.user_model.user_status.terms_of_use_version
   if (terms == 0) terms = 1 // TODO: is this how it works?
-  val termsLoginResponse = termsAgreement(startupResponse.user_id, terms)!!
+  val termsLoginResponse = termsAgreement(terms)!!
   randomDelay(9000)
   val deviceToken = getPushNotificationToken()
   val nameResponse = setUserProfile(
     name = generateName(),
-    deviceToken = deviceToken,
-    userId = startupResponse.user_id
+    deviceToken = deviceToken
   )!!
   randomDelay(9000)
   val nicknameResponse = setUserProfile(
     nickname = generateNickname(),
-    deviceToken = deviceToken,
-    userId = startupResponse.user_id
+    deviceToken = deviceToken
   )!!
   randomDelay(4000)
-  val birthdayResponse =
-    setUserProfileBirthDay(userId = startupResponse.user_id)!!
+  val birthdayResponse = setUserProfileBirthDay()!!
 }
