@@ -27,6 +27,7 @@ import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
+import java.util.GregorianCalendar
 import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -327,12 +328,14 @@ fun startup(): StartupResponse? {
   randomBytes = Random.nextBytes(32)
   val maskBytes = publicEncrypt(randomBytes)
   val mask = base64Encoder.encodeToString(maskBytes)
+  val timeZone = GregorianCalendar().getTimeZone()
+  val offset = timeZone.getRawOffset() / 1000
   val result = call(
     path = "/login/startup",
     payload = gson.toJson(StartupRequest(
       mask = mask,
       resemara_detection_identifier = resemara,
-      time_difference = 3600
+      time_difference = offset
     ))
   )
   return parseResponse<StartupResponse>(result)
