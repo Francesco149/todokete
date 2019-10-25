@@ -22,6 +22,7 @@ and create your sifas accounts
   notification token
 - [x] `/userProfile/setProfileBirthday` sets birth month and day
 - [x] `/story/finishUserStoryMain` completes a main story chapter
+- [x] `/live/start` starts a live, receives note data for the chosen song
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
