@@ -881,10 +881,9 @@ fun login(id: Int): LoginResponse? {
 }
 
 data class TermsAgreementRequest(val terms_version: Int)
+data class UserModelResponse(val user_model: UserModel)
 
-fun termsAgreement(termsVersion: Int): LoginResponse? {
-  // yes this is supposed to be a LoginResponse, except it will contain
-  // much less info than the one from /login/login
+fun termsAgreement(termsVersion: Int): UserModelResponse? {
   val result = call(
     path = "/terms/agreement",
     payload = gson.toJson(TermsAgreementRequest(
@@ -946,7 +945,7 @@ fun setUserProfile(
   nickname: String? = null,
   message: String? = null,
   deviceToken: String? = null
-): LoginResponse? {
+): UserModelResponse? {
   val result = call(
     path = "/userProfile/setProfile",
     payload = gson.toJson(SetUserProfileRequest(
@@ -967,7 +966,7 @@ data class SetUserProfileBirthDayRequest(
 fun setUserProfileBirthDay(
   month: Int = Random.nextInt(1, 13),
   day: Int = Random.nextInt(1, 29)
-): LoginResponse? {
+): UserModelResponse? {
   var result = call(
     path = "/userProfile/setProfileBirthday",
     payload = gson.toJson(SetUserProfileBirthDayRequest(
@@ -1160,7 +1159,7 @@ fun main(args: Array<String>) {
   randomDelay(9000)
   var terms = loginResponse.user_model.user_status.terms_of_use_version
   if (terms == 0) terms = 1 // TODO: is this how it works?
-  val termsLoginResponse = termsAgreement(terms)!!
+  val termsResponse = termsAgreement(terms)!!
   randomDelay(9000)
   val deviceToken = getPushNotificationToken()
   val nameResponse = setUserProfile(
