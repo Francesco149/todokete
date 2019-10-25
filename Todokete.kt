@@ -277,7 +277,7 @@ data class UserLinkData(
   val user_id: Int,
   val authorization_key: String,
   val name: LocalizedText,
-  val last_login_at: Int,
+  val last_login_at: Long,
   val sns_coin: Int,
   val terms_of_use_version: Int,
   val service_user_common_key: ByteArray // TODO: not 100% sure
@@ -286,7 +286,7 @@ data class UserLinkData(
 data class CurrentUserData(
   val user_id: Int,
   val name: LocalizedText,
-  val last_login_at: Int,
+  val last_login_at: Long,
   val sns_coin: Int
 )
 
@@ -357,18 +357,18 @@ data class LocalizedText(val dot_under_text: String) {
 data class UserStatus(
   val name: LocalizedText,
   val nickname: LocalizedText,
-  val last_login_at: Int,
+  val last_login_at: Long,
   val rank: Int,
   val exp: Int,
   val message: LocalizedText,
   val recommend_card_master_id: Int,
   val max_friend_num: Int,
-  val live_point_full_at: Int,
+  val live_point_full_at: Long,
   val live_point_broken: Int,
   val activity_point_count: Int,
-  val activity_point_reset_at: Int,
+  val activity_point_reset_at: Long,
   val activity_point_payment_recovery_daily_count: Int,
-  val activity_point_payment_recovery_daily_reset_at: Int,
+  val activity_point_payment_recovery_daily_reset_at: Long,
   val game_money: Int,
   val card_exp: Int,
   val free_sns_coin: Int,
@@ -385,10 +385,10 @@ data class UserStatus(
   val emblem_id: Int,
   val device_token: String,
   val tutorial_phase: Int,
-  val tutorial_end_at: Int,
+  val tutorial_end_at: Long,
   val login_days: Int,
   val navi_tap_count: Int,
-  val navi_tap_recover_at: Int,
+  val navi_tap_recover_at: Long,
   val is_auto_mode: Boolean,
   val max_score_live_difficulty_master_id: Int?,
   val live_max_score: Int,
@@ -397,7 +397,7 @@ data class UserStatus(
   val lesson_resume_status: Int,
   val accessory_box_additional: Int,
   val terms_of_use_version: Int,
-  val bootstrap_sifid_check_at: Int
+  val bootstrap_sifid_check_at: Long
 )
 
 data class UserMember(
@@ -433,7 +433,7 @@ data class UserCard(
   val additional_passive_skill_2_id: Int,
   val additional_passive_skill_3_id: Int,
   val additional_passive_skill_4_id: Int,
-  val acquired_at: Int,
+  val acquired_at: Long,
   val is_new: Boolean
 )
 
@@ -544,7 +544,7 @@ data class UserEmblem(
   val emblem_m_id: String,
   val is_new: Boolean,
   val emblem_param: String,
-  val acquired_at: Int
+  val acquired_at: Long
 )
 
 data class UserGachaTicket(
@@ -582,13 +582,13 @@ data class UserCustomBackground(
 data class UserStorySide(
   val story_side_master_id: Int,
   val is_new: Boolean,
-  val acquired_at: Int
+  val acquired_at: Long
 )
 
 data class UserStoryMember(
   val story_member_master_id: Int,
   val is_new: Boolean,
-  val acquired_at: Int
+  val acquired_at: Long
 )
 
 data class UserRecoveryLp(
@@ -607,7 +607,7 @@ data class UserMission(
   val mission_count: Int,
   val is_cleared: Boolean,
   val is_received_reward: Boolean,
-  val new_expired_at: Int
+  val new_expired_at: Long
 )
 
 data class UserDailyMission(
@@ -617,7 +617,7 @@ data class UserDailyMission(
   val mission_count: Int,
   val is_cleared: Boolean,
   val is_received_reward: Boolean,
-  val cleared_expired_at: Int
+  val cleared_expired_at: Long
 )
 
 data class UserWeeklyMission(
@@ -627,14 +627,14 @@ data class UserWeeklyMission(
   val mission_count: Int,
   val is_cleared: Boolean,
   val is_received_reward: Boolean,
-  val cleared_expired_at: Int,
-  val new_expired_at: Int
+  val cleared_expired_at: Long,
+  val new_expired_at: Long
 )
 
 data class UserInfoTriggerBasic(
   val trigger_id: Int,
   val info_trigger_type: Int,
-  val limit_at: Int,
+  val limit_at: Long,
   val description: String,
   val param_int: Int?
 )
@@ -665,7 +665,7 @@ data class UserAccessory(
   val passive_skill_2_level: Int?,
   val is_lock: Boolean,
   val is_new: Boolean,
-  val acquired_at: Int
+  val acquired_at: Long
 )
 
 data class UserAccessoryLevelUpItem(
