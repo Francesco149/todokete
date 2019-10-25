@@ -20,6 +20,7 @@ and create your sifas accounts
   version and what the latest version to accept is
 - [x] `/userProfile/setProfile` sets name, nickname, message and push
   notification token
+- [x] `/userProfile/setProfileBirthday` sets birth month and day
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

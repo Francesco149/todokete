@@ -956,6 +956,28 @@ fun setUserProfile(
   return parseResponse<LoginResponse>(result)
 }
 
+data class SetUserProfileBirthDayRequest(
+  val month: Int,
+  val day: Int
+)
+
+fun setUserProfileBirthDay(
+  month: Int = Random.nextInt(1, 13),
+  day: Int = Random.nextInt(1, 29),
+  userId: Int
+): LoginResponse? {
+  var result = call(
+    "/userProfile/setProfileBirthday",
+    payload = gson.toJson(SetUserProfileBirthDayRequest(
+      month = month,
+      day = day
+    )),
+    userId = userId,
+    flags = WithMasterVersion or WithTime
+  )
+  return parseResponse<LoginResponse>(result)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -997,4 +1019,7 @@ fun main(args: Array<String>) {
     deviceToken = deviceToken,
     userId = startupResponse.user_id
   )!!
+  randomDelay(4000)
+  val birthdayResponse =
+    setUserProfileBirthDay(userId = startupResponse.user_id)!!
 }
