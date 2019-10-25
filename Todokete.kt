@@ -1012,6 +1012,127 @@ fun finishUserStoryMain(
   return parseResponse(result)
 }
 
+data class LiveEventMarathonStatus(
+  val event_id: Int,
+  val is_use_event_marathon_booster: Boolean
+)
+
+data class StartLiveRequest(
+  val live_difficulty_id: Int,
+  val deck_id: Int,
+  val cell_id: Int?,
+  val partner_user_id: Int,
+  val partner_card_master_id: Int,
+  val lp_magnification: Int,
+  val is_auto_play: Boolean,
+  val live_event_marathon_status: LiveEventMarathonStatus?
+)
+
+data class LiveNoteSetting(
+  val id: Int,
+  val call_time: Int,
+  val note_type: Int,
+  val note_position: Int,
+  val gimmick_id: Int,
+  val note_action: Int,
+  val wave_id: Int,
+  val note_random_drop_color: Int,
+  val auto_judge_type: Int
+)
+
+data class LiveWaveSetting(
+  val id: Int,
+  val wave_damage: Int,
+  val mission_type: Int,
+  val arg_1: Int,
+  val arg_2: Int,
+  val reward_voltage: Int
+)
+
+data class NoteGimmick(
+  val uniq_id: Int,
+  val id: Int,
+  val note_gimmick_type: Int,
+  val arg_1: Int,
+  val arg_2: Int,
+  val effect_m_id: Int,
+  val icon_type: Int
+)
+
+data class LiveStageGimmick(
+  val gimmick_master_id: Int,
+  val condition_master_id_1: Int,
+  val condition_master_id_2: Int?,
+  val skill_master_id: Int,
+  val uniq_id: Int
+)
+
+data class LiveStage(
+  val live_difficulty_id: Int,
+  val live_notes: List<LiveNoteSetting>,
+  val live_wave_settings: List<LiveWaveSetting>,
+  val note_gimmicks: List<NoteGimmick>,
+  val stage_gimmick_dict: Map<Int, List<LiveStageGimmick>>
+)
+
+data class OtherUserCard(
+  val card_master_id: Int,
+  val level: Int,
+  val grade: Int,
+  val love_level: Int,
+  val is_awakening: Boolean,
+  val is_awakening_image: Boolean,
+  val is_all_training_activated: Boolean,
+  val active_skill_level: Int,
+  val passive_skill_levels: List<Int>,
+  val additional_passive_skill_ids: List<Int>,
+  val max_free_passive_skill: Int,
+  val training_stamina: Int,
+  val training_appeal: Int,
+  val training_technique: Int
+)
+
+data class Live(
+  val live_id: Long,
+  val live_type: Int,
+  val deck_id: Int,
+  val live_stage: LiveStage,
+  val live_partner_card: OtherUserCard,
+  val is_partner_friend: Boolean,
+  val cell_id: Int
+)
+
+data class StartLiveResponse(
+  val live: Live,
+  val user_model_diff: UserModel
+)
+
+fun startLive(
+  liveDifficultyId: Int,
+  deckId: Int = 1,
+  cellId: Int,
+  partnerUserId: Int = 0,
+  partnerCardMasterId: Int = 0,
+  lpMagnification: Int = 1,
+  isAutoPlay: Boolean = false,
+  liveEventMarathonStatus: LiveEventMarathonStatus? = null
+): StartLiveResponse? {
+  val response = call(
+    path = "/live/start",
+    payload = gson.toJson(StartLiveRequest(
+      live_difficulty_id = liveDifficultyId,
+      deck_id = deckId,
+      cell_id = cellId,
+      partner_user_id = partnerUserId,
+      partner_card_master_id = partnerCardMasterId,
+      lp_magnification = lpMagnification,
+      is_auto_play = isAutoPlay,
+      live_event_marathon_status = liveEventMarathonStatus
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1055,4 +1176,9 @@ fun main(args: Array<String>) {
   val birthdayResponse = setUserProfileBirthDay()!!
   randomDelay(10000)
   val finishUserStoryMainResponse = finishUserStoryMain(cellId = 1001)!!
+  randomDelay(1000)
+  val startLiveResponse = startLive(
+    liveDifficultyId = 30001301,
+    cellId = 1002
+  )
 }
