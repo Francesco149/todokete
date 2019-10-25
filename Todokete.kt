@@ -251,11 +251,7 @@ inline fun <reified T> parseResponse(result: String): T? {
 // ------------------------------------------------------------------------
 
 fun generateServiceId(): String {
-  val charset = "0123456789"
-  return "g" +
-    List(21) { Random.nextInt(0, charset.length) }
-    .map(charset::get)
-    .joinToString("")
+  return "g" + List(21) { "0123456789".random() }.joinToString("")
 }
 
 fun generateMask(): String {
