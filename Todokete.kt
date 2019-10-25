@@ -915,15 +915,15 @@ fun String.limitLen(len: Int): String =
   if (length > len) slice(0..len - 1) else this
 
 fun generateName(): String {
-  val name = randomLine("names.txt")!!.limitLen(5).toLowerCase()
-  val place = randomLine("places.txt")!!.limitLen(5).toLowerCase()
+  val name = randomLine("names.txt")!!.limitLen(4).toLowerCase()
+  val place = randomLine("places.txt")!!.limitLen(4).toLowerCase()
   return when (Random.nextInt(0, 2)) {
     0 -> name + place
     else -> name + place + Random.nextInt(0, 99).toString()
   }
 }
 
-fun generateNickname(): String = randomLine("names.txt")!!.limitLen(12)
+fun generateNickname(): String = randomLine("names.txt")!!.limitLen(10)
 
 const val DefaultMessage = "よろしくお願いします！"
 
