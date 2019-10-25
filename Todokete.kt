@@ -240,6 +240,8 @@ fun prettyPrint(result: String) {
 }
 
 inline fun <reified T> parseResponse(result: String): T? {
+  // TODO: consider moving everything except gson call to call() for
+  // smaller code output
   val array = JsonParser.parseString(result).getAsJsonArray()
   array[0].getAsInt()?.let { flags = flags or WithTime }
   ?: run { throw JsonSyntaxException("couldn't parse response time") }
@@ -308,7 +310,7 @@ fun fetchGameServiceDataBeforeLogin(
       service_id = service_id
     ))
   )
-  return parseResponse<FetchGameServiceDataBeforeLoginResponse>(result)
+  return parseResponse(result)
 }
 
 data class StartupRequest(
@@ -338,7 +340,7 @@ fun startup(): StartupResponse? {
       time_difference = offset
     ))
   )
-  return parseResponse<StartupResponse>(result)
+  return parseResponse(result)
 }
 
 data class LoginRequest(
@@ -875,21 +877,21 @@ fun login(id: Int): LoginResponse? {
       asset_state = assetStateLogGenerateV2(randomBytes64)
     ))
   )
-  return parseResponse<LoginResponse>(result)
+  return parseResponse(result)
 }
 
 data class TermsAgreementRequest(val terms_version: Int)
 
 fun termsAgreement(termsVersion: Int): LoginResponse? {
+  // yes this is supposed to be a LoginResponse, except it will contain
+  // much less info than the one from /login/login
   val result = call(
     path = "/terms/agreement",
     payload = gson.toJson(TermsAgreementRequest(
       terms_version = termsVersion
     ))
   )
-  // yes this is supposed to be a LoginResponse, except it will contain
-  // much less info than the one from /login/login
-  return parseResponse<LoginResponse>(result)
+  return parseResponse(result)
 }
 
 data class SetUserProfileRequest(
@@ -954,7 +956,7 @@ fun setUserProfile(
       device_token = deviceToken
     ))
   )
-  return parseResponse<LoginResponse>(result)
+  return parseResponse(result)
 }
 
 data class SetUserProfileBirthDayRequest(
@@ -973,7 +975,7 @@ fun setUserProfileBirthDay(
       day = day
     ))
   )
-  return parseResponse<LoginResponse>(result)
+  return parseResponse(result)
 }
 
 // ------------------------------------------------------------------------
