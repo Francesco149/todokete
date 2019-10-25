@@ -969,7 +969,7 @@ fun setUserProfileBirthDay(
   day: Int = Random.nextInt(1, 29)
 ): LoginResponse? {
   var result = call(
-    "/userProfile/setProfileBirthday",
+    path = "/userProfile/setProfileBirthday",
     payload = gson.toJson(SetUserProfileBirthDayRequest(
       month = month,
       day = day
@@ -1001,7 +1001,7 @@ fun finishUserStoryMain(
   memberId: Int? = null
 ): StoryMainResponse? {
   var result = call(
-    "/story/finishUserStoryMain",
+    path = "/story/finishUserStoryMain",
     payload = gson.toJson(
       StoryMainRequest(
         cell_id = cellId,
