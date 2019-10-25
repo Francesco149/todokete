@@ -785,7 +785,7 @@ data class LoginResponse(
   val user_model: UserModel,
   val is_platform_service_linked: Boolean,
   val last_timestamp: Int,
-  val cautions: Array<Int>, // TODO: not sure
+  val cautions: List<Int>, // TODO: not sure
   val show_home_caution: Boolean,
   val live_resume: Map<String, LiveResume> // TODO; not sure
 )
@@ -992,7 +992,7 @@ data class Content(
 
 data class StoryMainResponse(
   val user_model_diff: UserModel,
-  val first_clear_reward: Array<Content>
+  val first_clear_reward: List<Content>
 )
 
 fun finishUserStoryMain(
