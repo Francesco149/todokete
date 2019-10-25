@@ -19,6 +19,7 @@ import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import com.tylerthrailkill.helpers.prettyprint.pp
 import java.io.IOException
+import java.io.File
 import java.lang.Thread
 import java.lang.reflect.ParameterizedType
 import java.math.BigInteger
@@ -887,6 +888,74 @@ fun termsAgreement(userId: Int, termsVersion: Int): LoginResponse? {
   return parseResponse<LoginResponse>(result)
 }
 
+data class SetUserProfileRequest(
+  val name: String?,
+  val nickname: String?,
+  val message: String?,
+  val device_token: String? // firebase push notification token
+)
+
+fun randomLine(file: String): String? {
+  var n = 0
+  File(file).forEachLine { n += 1 }
+  val line = Random.nextInt(0, n)
+  n = 0
+  File(file).useLines { lines ->
+    for (x in lines) {
+      n += 1
+      if (n == line) {
+        return x
+      }
+    }
+  }
+  return null
+}
+
+fun String.limitLen(len: Int): String =
+  if (length > len) slice(0..len - 1) else this
+
+fun generateName(): String {
+  val name = randomLine("names.txt")!!.limitLen(5).toLowerCase()
+  val place = randomLine("places.txt")!!.limitLen(5).toLowerCase()
+  return when (Random.nextInt(0, 2)) {
+    0 -> name + place
+    else -> name + place + Random.nextInt(0, 99).toString()
+  }
+}
+
+fun generateNickname(): String = randomLine("names.txt")!!.limitLen(12)
+
+const val DefaultMessage = "よろしくお願いします！"
+
+fun getPushNotificationToken(): String {
+  // TODO: implement firebase messaging in kotlin
+  println("waiting for token-generator...")
+  val client = OkHttpClient()
+  val request = Request.Builder().url("http://127.0.0.1:6969").build()
+  return client.newCall(request).execute().body()!!.string()
+}
+
+fun setUserProfile(
+  name: String? = null,
+  nickname: String? = null,
+  message: String? = null,
+  deviceToken: String? = null,
+  userId: Int
+): LoginResponse? {
+  val result = call(
+    path = "/userProfile/setProfile",
+    payload = gson.toJson(SetUserProfileRequest(
+      name = name,
+      nickname = nickname,
+      message = message,
+      device_token = deviceToken
+    )),
+    userId = userId,
+    flags = WithMasterVersion or WithTime
+  )
+  return parseResponse<LoginResponse>(result)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -915,4 +984,17 @@ fun main(args: Array<String>) {
   var terms = loginResponse.user_model.user_status.terms_of_use_version
   if (terms == 0) terms = 1 // TODO: is this how it works?
   val termsLoginResponse = termsAgreement(startupResponse.user_id, terms)!!
+  randomDelay(9000)
+  val deviceToken = getPushNotificationToken()
+  val nameResponse = setUserProfile(
+    name = generateName(),
+    deviceToken = deviceToken,
+    userId = startupResponse.user_id
+  )!!
+  randomDelay(9000)
+  val nicknameResponse = setUserProfile(
+    nickname = generateNickname(),
+    deviceToken = deviceToken,
+    userId = startupResponse.user_id
+  )!!
 }
