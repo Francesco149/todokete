@@ -18,8 +18,8 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import com.tylerthrailkill.helpers.prettyprint.pp
-import java.io.IOException
 import java.io.File
+import java.io.IOException
 import java.lang.Thread
 import java.lang.reflect.ParameterizedType
 import java.math.BigInteger
