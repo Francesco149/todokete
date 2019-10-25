@@ -21,6 +21,7 @@ and create your sifas accounts
 - [x] `/userProfile/setProfile` sets name, nickname, message and push
   notification token
 - [x] `/userProfile/setProfileBirthday` sets birth month and day
+- [x] `/story/finishUserStoryMain` completes a main story chapter
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

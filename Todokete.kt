@@ -978,6 +978,40 @@ fun setUserProfileBirthDay(
   return parseResponse(result)
 }
 
+data class StoryMainRequest(
+  val cell_id: Int,
+  val is_auto_mode: Boolean,
+  val member_id: Int?
+)
+
+data class Content(
+  val content_type: Int,
+  val content_id: Int,
+  val content_amount: Int
+)
+
+data class StoryMainResponse(
+  val user_model_diff: UserModel,
+  val first_clear_reward: Array<Content>
+)
+
+fun finishUserStoryMain(
+  cellId: Int,
+  isAutoMode: Boolean = false,
+  memberId: Int? = null
+): StoryMainResponse? {
+  var result = call(
+    "/story/finishUserStoryMain",
+    payload = gson.toJson(
+      StoryMainRequest(
+        cell_id = cellId,
+        is_auto_mode = isAutoMode,
+        member_id = memberId
+    ))
+  )
+  return parseResponse(result)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1019,4 +1053,6 @@ fun main(args: Array<String>) {
   )!!
   randomDelay(4000)
   val birthdayResponse = setUserProfileBirthDay()!!
+  randomDelay(10000)
+  val finishUserStoryMainResponse = finishUserStoryMain(cellId = 1001)!!
 }
