@@ -122,6 +122,7 @@ var randomBytes = Random.nextBytes(32) // regenerated on login/startup
 var userId = 0 // obtained after startup, or known before login
 var flags = 0
 var masterVersion: String? = null // obtained after the first request
+var lastRequestTime: Long = 0
 
 // flags
 const val WithMasterVersion = 1 shl 1
@@ -129,6 +130,7 @@ const val WithTime = 1 shl 2
 const val PrintHeaders = 1 shl 3
 
 fun call(path: String, payload: String): String {
+  lastRequestTime = System.currentTimeMillis()
   requestId += 1
   var pathWithQuery = path + "?p=a"
   if ((flags and WithMasterVersion) != 0) {
@@ -139,8 +141,7 @@ fun call(path: String, payload: String): String {
     pathWithQuery += "&u=$userId"
   }
   if ((flags and WithTime) != 0) {
-    val millitime = System.currentTimeMillis()
-    pathWithQuery += "&t=$millitime"
+    pathWithQuery += "&t=$lastRequestTime"
   }
   println("-> POST $pathWithQuery")
   val hashData = pathWithQuery + " " + payload
@@ -239,6 +240,8 @@ fun prettyPrint(result: String) {
 
 inline fun <reified T> parseResponse(result: String): T? {
   val array = JsonParser.parseString(result).getAsJsonArray()
+  array[0].getAsInt()?.let { flags = flags or WithTime }
+  ?: run { throw JsonSyntaxException("couldn't parse response time") }
   array[1].getAsString()?.let {
     masterVersion = it
     flags = flags or WithMasterVersion
@@ -855,7 +858,6 @@ var authCount = 0
 
 fun login(id: Int): LoginResponse? {
   userId = id
-  flags = flags or WithTime
   authCount += 1
   randomBytes = Random.nextBytes(32)
   val randomBytes64 = base64Encoder.encodeToString(randomBytes)
