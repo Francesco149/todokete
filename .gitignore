@@ -1,2 +1,3 @@
 *.jar
 *.log
+node_modules

@@ -1,0 +1,15 @@
+{
+  "name": "token-generator",
+  "version": "1.0.0",
+  "description": "generates push notification tokens for SIFAS",
+  "main": "index.js",
+  "dependencies": {
+    "push-receiver": "^2.1.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "Franc[e]sco <lolisamurai@tfwno.gf>",
+  "license": "UNLICENSED"
+}

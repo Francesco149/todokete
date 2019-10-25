@@ -20,6 +20,17 @@ and create your sifas accounts
   version and what the latest version to accept is
 
 # build and run (linux)
+temporarily, you need nodejs to run an additional local service that
+generates push notification tokens. this will run on port 6969
+
+```
+cd token-generator
+npm i
+npm start
+```
+
+once that's running, you can build and run the client
+
 you need the kotlin compiler (kotlinc) which on void linux is package
 `kotlin-bin`
 
