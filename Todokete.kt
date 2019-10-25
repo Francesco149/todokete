@@ -19,6 +19,7 @@ import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import com.tylerthrailkill.helpers.prettyprint.pp
 import java.io.IOException
+import java.lang.Thread
 import java.lang.reflect.ParameterizedType
 import java.math.BigInteger
 import java.security.KeyFactory
@@ -116,6 +117,7 @@ fun hmacSha1(key: ByteArray, data: ByteArray): String {
 
 var requestId = 0
 var sessionKey = StartupKey.toByteArray()
+var randomBytes = Random.nextBytes(32) // regenerated on login/startup
 var masterVersion: String? = null
 
 const val WithMasterVersion = 1 shl 1
@@ -318,9 +320,10 @@ data class StartupResponse(
   val authorization_key: String
 )
 
-fun startup(randomBytes: ByteArray): StartupResponse? {
+fun startup(): StartupResponse? {
   val advertisingId = UUID.randomUUID().toString()
   val resemara = md5(advertisingId + PackageName)
+  randomBytes = Random.nextBytes(32)
   val maskBytes = publicEncrypt(randomBytes)
   val mask = base64Encoder.encodeToString(maskBytes)
   val result = call(
@@ -855,7 +858,7 @@ var authCount = 0
 
 fun login(userId: Int): LoginResponse? {
   authCount += 1
-  val randomBytes = Random.nextBytes(32)
+  randomBytes = Random.nextBytes(32)
   val randomBytes64 = base64Encoder.encodeToString(randomBytes)
   val maskBytes = publicEncrypt(randomBytes)
   val mask = base64Encoder.encodeToString(maskBytes)
@@ -872,6 +875,22 @@ fun login(userId: Int): LoginResponse? {
   return parseResponse<LoginResponse>(result)
 }
 
+data class TermsAgreementRequest(val terms_version: Int)
+
+fun termsAgreement(userId: Int, termsVersion: Int): LoginResponse? {
+  val result = call(
+    path = "/terms/agreement",
+    payload = gson.toJson(TermsAgreementRequest(
+      terms_version = termsVersion
+    ), TermsAgreementRequest::class.java),
+    userId = userId,
+    flags = WithMasterVersion or WithTime
+  )
+  // yes this is supposed to be a LoginResponse, except it will contain
+  // much less info than the one from /login/login
+  return parseResponse<LoginResponse>(result)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -882,12 +901,22 @@ fun testAssetState() {
   assert(generated == expected)
 }
 
+fun randomDelay(ms: Int) =
+  Thread.sleep((ms + (-ms / 5..ms / 5).random()).toLong())
+
 fun main(args: Array<String>) {
   testAssetState()
   fetchGameServiceDataBeforeLogin()
-  val randomBytes = Random.nextBytes(32)
-  val startupResponse = startup(randomBytes)!!
+  randomDelay(1000)
+  val startupResponse = startup()!!
   val authKey = base64Decoder.decode(startupResponse.authorization_key)
   sessionKey = authKey.xor(randomBytes)
-  login(startupResponse.user_id)
+  randomDelay(2000)
+  val loginResponse = login(startupResponse.user_id)!!
+  val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
+  sessionKey = loginSessionKey.xor(randomBytes)
+  randomDelay(9000)
+  var terms = loginResponse.user_model.user_status.terms_of_use_version
+  if (terms == 0) terms = 1 // TODO: is this how it works?
+  val termsLoginResponse = termsAgreement(startupResponse.user_id, terms)!!
 }

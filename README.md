@@ -16,6 +16,8 @@ and create your sifas accounts
 - [x] `/dataLink/fetchGameServiceDataBeforeLogin` gets existing accounts
   associated with a `service_id`, also used to get MasterVersion on
   startup
+- [x] `/terms/agreement` used for checking the currently accepted ToS
+  version and what the latest version to accept is
 
 # build and run (linux)
 you need the kotlin compiler (kotlinc) which on void linux is package
