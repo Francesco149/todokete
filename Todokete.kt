@@ -1307,6 +1307,15 @@ fun skipLive(
   return parseResponse(response)
 }
 
+data class SetFavoriteMemberRequest(val member_master_id: Int)
+
+fun setFavoriteMember(id: Int) {
+  val result = call(
+    path = "/communicationMember/setFavoriteMember",
+    payload = gson.toJson(SetFavoriteMemberRequest(member_master_id = id))
+  )
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1385,4 +1394,7 @@ fun main(args: Array<String>) {
     power = 1047,
     targetScore = 40000
   )!!
+  randomDelay(10000)
+  setFavoriteMember(id = 1)
+  randomDelay(4000)
 }

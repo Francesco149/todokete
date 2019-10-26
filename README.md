@@ -31,6 +31,8 @@ and create your sifas accounts
   submitting all the notes with zero values as demonstrated in my
   `skipLive` function. this is equivalent to pausing and clicking ok to
   skip the live
+- [x] `/communicationMember/setFavoriteMember` sets favorite member, the
+  character who appears in your main screen
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
