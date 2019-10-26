@@ -25,6 +25,12 @@ and create your sifas accounts
 - [x] `/live/start` starts a live, receives note data for the chosen song
 - [x] `/ruleDescription/saveRuleDescription` not sure, I think it has
   something to do with either gifts or storyline progress status
+- [x] `/live/finish` completes a live. sends precise note-by-note scoring.
+  accurate simulation of the game's scoring system is required to submit
+  real scores, however for the tutorial lives it's possible to skip by
+  submitting all the notes with zero values as demonstrated in my
+  `skipLive` function. this is equivalent to pausing and clicking ok to
+  skip the live
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

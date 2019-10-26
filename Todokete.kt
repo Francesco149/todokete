@@ -124,6 +124,7 @@ var userId = 0 // obtained after startup, or known before login
 var flags = 0
 var masterVersion: String? = null // obtained after the first request
 var lastRequestTime: Long = 0
+var userModel: UserModel? = null // TODO: keep this properly updated
 
 // flags
 const val WithMasterVersion = 1 shl 1
@@ -1117,7 +1118,7 @@ data class StartLiveResponse(
 
 fun startLive(
   liveDifficultyId: Int,
-  deckId: Int = 1,
+  deckId: Int,
   cellId: Int,
   partnerUserId: Int = 0,
   partnerCardMasterId: Int = 0,
@@ -1155,6 +1156,158 @@ fun saveRuleDescription(ids: List<Int>): UserModelResponse? {
   return parseResponse(response)
 }
 
+data class LiveNoteScore(
+  val judge_type: Int = 1,
+  val voltage: Int = 0,
+  val card_master_id: Int = 0
+)
+
+data class LiveTurnStat(
+  val note_id: Int = 0,
+  val current_life: Int = 0,
+  val current_voltage: Int = 0,
+  val appended_shield: Int= 0,
+  val healed_life: Int = 0,
+  val healed_life_percent: Int = 0,
+  val stamina_damage: Int = 0
+)
+
+data class LiveCardStat(
+  val got_voltage: Int = 0,
+  val skill_triggered_count: Int = 0,
+  val appeal_count: Int = 0,
+  val recast_squad_effect_count: Int = 0,
+  val card_master_id: Int
+)
+
+data class LiveScore(
+  val result_dict: Map<Int, LiveNoteScore>,
+  val wave_stat: Map<Int, Boolean> = emptyMap(), // empty when skipping
+  val turn_stat_dict: Map<Int, LiveTurnStat>, // by note id
+  val card_stat_dict: Map<Int, LiveCardStat>, // by card_master_id
+  val target_score: Int,
+  val current_score: Int = 0,
+  val combo_count: Int = 0,
+  val change_squad_count: Int = 0,
+  val highest_combo_count: Int = 0,
+  val remaining_stamina: Int,
+  val is_perfect_live: Boolean = true,
+  val is_perfect_full_combo: Boolean = true,
+  val use_voltage_active_skill_count: Int = 0,
+  val use_heal_active_skill_count: Int = 0,
+  val use_debuf_active_skill_count: Int = 0,
+  val use_buf_active_skill_count: Int = 0,
+  val use_sp_skill_count: Int = 0,
+  val live_power: Int
+)
+
+data class ResumeFinishInfo(
+  val cached_judge_result: List<Int> = emptyList() // TODO: unsure
+)
+
+data class FinishLiveRequest(
+  val live_id: Long,
+  val live_finish_status: Int = 1,
+  val live_score: LiveScore,
+  val resume_finish_info: ResumeFinishInfo = ResumeFinishInfo()
+)
+
+data class LiveDropContent(
+  val drop_color: Int,
+  val content: Content,
+  val is_rare: Boolean
+)
+
+data class LiveResultMemberLoveStatus(val reward_love_point: Int)
+
+data class LiveResultAchievement(
+  val position: Int,
+  val is_already_achieved: Boolean,
+  val is_currently_achieved: Boolean
+)
+
+data class LiveResultMvp(
+  val card_master_id: Int,
+  val get_voltage: Int,
+  val skill_triggered_count: Int,
+  val appeal_count: Int
+)
+
+data class OtherUser(
+  val user_id: Int,
+  val name: LocalizedText,
+  val rank: Int,
+  val last_played_at: Int,
+  val recommend_card_master_id: Int,
+  val recommend_card_level: Int,
+  val is_recommend_card_image_awaken: Boolean,
+  val is_recommend_card_all_training_activated: Boolean,
+  val emblem_id: Int,
+  val is_new: Boolean,
+  val introduction_message: LocalizedText,
+  val friend_approved_at: Long,
+  val request_status: Int,
+  val is_request_pending: Boolean
+)
+
+data class LiveResult(
+  val live_difficulty_master_id: Long,
+  val live_deck_id: Int,
+  val standard_drops: List<LiveDropContent>,
+  val additional_drops: List<LiveDropContent>,
+  val gimmick_drops: List<LiveDropContent>,
+  val member_love_statuses: Map<Int, LiveResultMemberLoveStatus>,
+  val mvp: LiveResultMvp,
+  val partner: OtherUser,
+  val live_result_achievements: Map<Int, LiveResultAchievement>
+)
+
+data class FinishLiveResponse(
+  val live_result: LiveResult,
+  val user_model_diff: UserModel
+)
+
+fun skipLive(
+  live: Live,
+  power: Int,
+  stamina: Int,
+  targetScore: Int
+): FinishLiveResponse? {
+  val notes = live.live_stage.live_notes
+  var turnStatDict = notes.map({ it.id to LiveTurnStat() })
+    .toMap().toMutableMap()
+  turnStatDict[1] = LiveTurnStat(current_life = stamina)
+  turnStatDict[0] = LiveTurnStat(current_life = stamina)
+  turnStatDict[notes.size] = LiveTurnStat()
+  val deck = userModel!!.user_live_deck_by_id[live.deck_id]!!
+  val response = call(
+    path = "/live/finish",
+    payload = gson.toJson(FinishLiveRequest(
+      live_id = live.live_id,
+      live_score = LiveScore(
+        result_dict = notes.map({ it.id to LiveNoteScore() }).toMap(),
+        turn_stat_dict = turnStatDict,
+        card_stat_dict = mapOf(
+          deck.suit_master_id_1 to deck.card_master_id_1,
+          deck.suit_master_id_2 to deck.card_master_id_2,
+          deck.suit_master_id_3 to deck.card_master_id_3,
+          deck.suit_master_id_4 to deck.card_master_id_4,
+          deck.suit_master_id_5 to deck.card_master_id_5,
+          deck.suit_master_id_6 to deck.card_master_id_6,
+          deck.suit_master_id_7 to deck.card_master_id_7,
+          deck.suit_master_id_8 to deck.card_master_id_8,
+          deck.suit_master_id_9 to deck.card_master_id_9
+        ).map({ it.key!! to LiveCardStat(card_master_id = it.value!!) })
+        .toMap(),
+        target_score = targetScore,
+        remaining_stamina = stamina,
+        live_power = power
+      )
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1177,10 +1330,11 @@ fun main(args: Array<String>) {
   sessionKey = authKey.xor(randomBytes)
   randomDelay(2000)
   val loginResponse = login(startupResponse.user_id)!!
+  userModel = loginResponse.user_model // TODO: auto update this
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
   sessionKey = loginSessionKey.xor(randomBytes)
   randomDelay(9000)
-  var terms = loginResponse.user_model.user_status.terms_of_use_version
+  var terms = userModel!!.user_status.terms_of_use_version
   if (terms == 0) terms = 1 // TODO: is this how it works?
   val termsResponse = termsAgreement(terms)!!
   randomDelay(9000)
@@ -1197,10 +1351,36 @@ fun main(args: Array<String>) {
   randomDelay(4000)
   val birthdayResponse = setUserProfileBirthDay()!!
   randomDelay(10000)
-  val finishUserStoryMainResponse = finishUserStoryMain(cellId = 1001)!!
+  var finishUserStoryMainResponse = finishUserStoryMain(cellId = 1001)!!
   randomDelay(1000)
-  val startLiveResponse = startLive(
+  var startLiveResponse = startLive(
     liveDifficultyId = 30001301,
-    cellId = 1002
-  )
+    cellId = 1002,
+    deckId = 1
+  )!!
+  randomDelay(4000)
+  // TODO: is this always present? I don't see these rule description id's
+  // in my client's user model responses but they're present when playing
+  // from android x86
+  val saveRuleDescriptionResponse = saveRuleDescription(listOf(1))!!
+  randomDelay(4000)
+  var skipLiveResponse = skipLive(
+    live = startLiveResponse.live,
+    stamina = 6578, // TODO: calc these
+    power = 1040,
+    targetScore = 35000
+  )!!
+  randomDelay(10000)
+  finishUserStoryMainResponse = finishUserStoryMain(cellId = 1003)!!
+  startLiveResponse = startLive(
+    liveDifficultyId = 31007301,
+    cellId = 1004,
+    deckId = 2
+  )!!
+  skipLiveResponse = skipLive(
+    live = startLiveResponse.live,
+    stamina = 5812,
+    power = 1047,
+    targetScore = 40000
+  )!!
 }
