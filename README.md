@@ -23,6 +23,8 @@ and create your sifas accounts
 - [x] `/userProfile/setProfileBirthday` sets birth month and day
 - [x] `/story/finishUserStoryMain` completes a main story chapter
 - [x] `/live/start` starts a live, receives note data for the chosen song
+- [x] `/ruleDescription/saveRuleDescription` not sure, I think it has
+  something to do with either gifts or storyline progress status
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

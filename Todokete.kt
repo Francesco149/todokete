@@ -1132,6 +1132,20 @@ fun startLive(
   return parseResponse(response)
 }
 
+data class SaveRuleDescriptionRequest(
+  val rule_description_master_ids: List<Int>
+)
+
+fun saveRuleDescription(ids: List<Int>): UserModelResponse? {
+  val response = call(
+    path = "/ruleDescription/saveRuleDescription",
+    payload = gson.toJson(SaveRuleDescriptionRequest(
+      rule_description_master_ids = ids
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
