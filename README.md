@@ -33,6 +33,9 @@ and create your sifas accounts
   skip the live
 - [x] `/communicationMember/setFavoriteMember` sets favorite member, the
   character who appears in your main screen
+- [x] `/bootstrap/fetchBootstrap` fetches all kinds of info based on the
+  list of id's provided. things that can be fetched include login bonuses,
+  expired items, new badges, banners, notices, billing info
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

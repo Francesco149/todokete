@@ -125,6 +125,8 @@ var flags = 0
 var masterVersion: String? = null // obtained after the first request
 var lastRequestTime: Long = 0
 var userModel: UserModel? = null // TODO: keep this properly updated
+val deviceName = randomDeviceName()
+val deviceToken = getPushNotificationToken()
 
 // flags
 const val WithMasterVersion = 1 shl 1
@@ -952,8 +954,7 @@ fun getPushNotificationToken(): String {
 fun setUserProfile(
   name: String? = null,
   nickname: String? = null,
-  message: String? = null,
-  deviceToken: String? = null
+  message: String? = null
 ): UserModelResponse? {
   val result = call(
     path = "/userProfile/setProfile",
@@ -1165,7 +1166,7 @@ data class LiveTurnStat(
   val note_id: Int = 0,
   val current_life: Int = 0,
   val current_voltage: Int = 0,
-  val appended_shield: Int= 0,
+  val appended_shield: Int = 0,
   val healed_life: Int = 0,
   val healed_life_percent: Int = 0,
   val stamina_damage: Int = 0
@@ -1316,6 +1317,220 @@ fun setFavoriteMember(id: Int) {
   )
 }
 
+fun randomDeviceName(): String = randomLine("devices.txt")!!
+
+data class FetchBootstrapRequest(
+  val bootstrap_fetch_types: List<Int>,
+  val device_token: String,
+  val device_name: String
+)
+
+data class UserInfoTriggerGachaPointExchangeRow(
+  val trigger_id: Int,
+  val gacha_master_id: Int,
+  val gacha_title: LocalizedText,
+  val point_1_master_id: Int,
+  val point_1_before_amount: Int,
+  val point_1_after_amount: Int,
+  val point_2_master_id: Int,
+  val point_2_before_amount: Int,
+  val point_2_after_amount: Int
+)
+
+data class ShopBillingProductContent(
+  val amount: Int,
+  val content_type: Int,
+  val content_master_id: Int,
+  val is_paid_content: Boolean
+)
+
+data class ShopBillingPlatformProduct(
+  val platform_product_id: String // TODO: not sure
+)
+
+data class ShopBillingLimitedProductDetail(
+  val beginner_term: Int,
+  val sale_end_at: Long,
+  val limit_amount: Int?,
+  val limited_remaining_amount: Int?,
+  val parent_shop_billing_platform_product: ShopBillingPlatformProduct,
+  val parent_shop_billing_product_content: List<ShopBillingProductContent>
+)
+
+data class GiftBoxContent(
+  val amount: Int,
+  val content_type: Int,
+  val content_master_id: Int,
+  val day: Int
+)
+
+data class GiftBox(
+  val is_in_period_gift_box: Boolean,
+  val gift_box_content: List<GiftBoxContent>
+)
+
+data class ShopBillingProduct(
+  val shop_product_master_id: Int,
+  val billing_product_type: Int,
+  val price: Int,
+  val shop_billing_product_content: List<ShopBillingProductContent>,
+  val shop_billing_platform_product: ShopBillingPlatformProduct,
+  val shop_billing_limited_product_detail: ShopBillingLimitedProductDetail,
+  val gift_box: GiftBox
+)
+
+data class UserInfoTriggerExpiredGiftBox(
+  val total_days: Int,
+  val shop_billing_product: ShopBillingProduct,
+  val is_repurchase: Boolean
+)
+
+data class UserInfoTriggerEventMarathonShowResultRow(
+  val trigger_id: Int,
+  val event_marathon_id: Int,
+  val result_at: Long,
+  val end_at: Long
+)
+
+data class UserInfoTrigger(
+  val user_info_trigger_gacha_point_exchange_rows:
+    List<UserInfoTriggerGachaPointExchangeRow>,
+  val user_info_trigger_expired_gift_box_rows:
+    List<UserInfoTriggerExpiredGiftBox>,
+  val user_info_trigger_event_marathon_show_result_rows:
+    List<UserInfoTriggerEventMarathonShowResultRow>
+)
+
+data class BillingStateInfo(
+  val age: Int?,
+  val current_month_purchase_price: Int
+)
+
+data class TextureStruktur(val v: String)
+
+data class Banner(
+  val banner_master_id: Int,
+  val banner_image_asset_path: TextureStruktur,
+  val banner_type: Int,
+  val expire_at: Long,
+  val transition_id: Int,
+  val transition_parameter: Int?
+)
+
+data class BootstrapBanner(val banners: List<Banner>)
+
+data class BootstrapNewBadge(
+  val is_new_main_story: Boolean,
+  val unreceived_present_box: Int,
+  val notice_new_arrivals_ids: List<Int>,
+  val is_update_friend: Boolean,
+  val unreceived_mission: Int
+)
+
+data class BootstrapPickupEventMarathonInfo(
+  val event_id: Int,
+  val closed_at: Long,
+  val end_at: Long
+)
+
+data class BootstrapLiveCampaignInfo(
+  val live_campaign_end_at: Long,
+  val live_daily_campaign_end_at: Long
+)
+
+data class BootstrapPickupInfo(
+  val active_event: BootstrapPickupEventMarathonInfo,
+  val live_campaign_info: BootstrapLiveCampaignInfo,
+  val is_lesson_campaign: Boolean,
+  val appeal_gachas: List<TextureStruktur>,
+  val is_shop_sale: Boolean
+)
+
+data class BootstrapExpiredItem(val expired_items: List<Content>)
+data class MovieStruktur(val v: String)
+
+data class BootstrapSuperNotice(
+  val notice_id: Int,
+  val movie_path: MovieStruktur,
+  val last_updated_at: Long
+)
+
+data class BootstrapNotice(
+  val super_notices: List<BootstrapSuperNotice>,
+  val fetched_at: Long,
+  val review_super_notice_at: Long,
+  val force_view_notice_id: Int
+)
+
+data class LoginBonusContents(
+  val content_type: Int,
+  val content_id: Int,
+  val content_amount: Int
+)
+
+data class LoginBonusRewards(
+  val day: Int,
+  val status: Int,
+  val content_grade: Int?,
+  val login_bonus_contents: List<LoginBonusContents>
+)
+
+data class IllustLoginBonus(
+  val login_bonus_id: Int,
+  val login_bonus_rewards: List<LoginBonusRewards>,
+  val background_id: Int,
+  val start_at: Long,
+  val end_at: Long
+)
+
+data class NaviLoginBonus(
+  val login_bonus_id: Int,
+  val login_bonus_rewards: List<LoginBonusRewards>,
+  val background_id: Int,
+  val whiteboard_texture_asset: TextureStruktur,
+  val member_master_id: Int?,
+  val suit_master_id: Int?,
+  val start_at: Long,
+  val end_at: Long,
+  val max_page: Int,
+  val current_page: Int
+)
+
+data class BootstrapLoginBonus(
+  val event_2d_login_bonuses: List<IllustLoginBonus>,
+  val login_bonuses: List<NaviLoginBonus>,
+  val event_3d_login_bonuses: List<NaviLoginBonus>,
+  val beginner_login_bonuses: List<NaviLoginBonus>,
+  val comeback_login_bonuses: List<IllustLoginBonus>,
+  val birthday_login_bonuses: List<NaviLoginBonus>,
+  val next_login_bons_receive_at: Long
+)
+
+data class FetchBootstrapResponse(
+  val user_model_diff: UserModel,
+  val user_info_trigger: UserInfoTrigger,
+  val billing_state_info: BillingStateInfo,
+  val fetch_bootstrap_banner_response: BootstrapBanner,
+  val fetch_bootstrap_new_badge_response: BootstrapNewBadge,
+  val fetch_bootstrap_pickup_info_response: BootstrapPickupInfo,
+  val fetch_bootstrap_expired_item_response: BootstrapExpiredItem,
+  val fetch_bootstrap_login_bonus_response: BootstrapLoginBonus,
+  val fetch_bootstrap_notice_response: BootstrapNotice,
+  val mission_beginner_master_id: Int?
+)
+
+fun fetchBootstrapRequest(types: List<Int>): FetchBootstrapResponse? {
+  val response = call(
+    path = "/bootstrap/fetchBootstrap",
+    payload = gson.toJson(FetchBootstrapRequest(
+      bootstrap_fetch_types = types,
+      device_name = deviceName,
+      device_token = deviceToken
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1346,16 +1561,9 @@ fun main(args: Array<String>) {
   if (terms == 0) terms = 1 // TODO: is this how it works?
   val termsResponse = termsAgreement(terms)!!
   randomDelay(9000)
-  val deviceToken = getPushNotificationToken()
-  val nameResponse = setUserProfile(
-    name = generateName(),
-    deviceToken = deviceToken
-  )!!
+  val nameResponse = setUserProfile(name = generateName())!!
   randomDelay(9000)
-  val nicknameResponse = setUserProfile(
-    nickname = generateNickname(),
-    deviceToken = deviceToken
-  )!!
+  val nicknameResponse = setUserProfile(nickname = generateNickname())!!
   randomDelay(4000)
   val birthdayResponse = setUserProfileBirthDay()!!
   randomDelay(10000)
@@ -1397,4 +1605,5 @@ fun main(args: Array<String>) {
   randomDelay(10000)
   setFavoriteMember(id = 1)
   randomDelay(4000)
+  fetchBootstrapRequest(types = listOf(2, 3, 4, 5, 9, 10))
 }
