@@ -228,7 +228,16 @@ class JsonMapAdapterFactory : TypeAdapterFactory {
 
     @Throws(IOException::class)
     override fun write(writer: JsonWriter, value: Map<Tk, Tv>?) {
-      throw JsonSyntaxException("not implemented")
+      if (value == null) {
+        writer.nullValue()
+        return
+      }
+      writer.beginArray()
+      value.map {
+        keyAdapter.write(writer, it.key)
+        valueAdapter.write(writer, it.value)
+      }
+      writer.endArray()
     }
   }
 }
