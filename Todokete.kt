@@ -253,8 +253,7 @@ inline fun <reified T> parseResponse(result: String): T? {
   // TODO: consider moving everything except gson call to call() for
   // smaller code output
   val array = JsonParser.parseString(result).getAsJsonArray()
-  array[0].getAsInt()?.let { flags = flags or WithTime }
-  ?: run { throw JsonSyntaxException("couldn't parse response time") }
+  array[0].getAsInt().let { flags = flags or WithTime }
   array[1].getAsString()?.let {
     masterVersion = it
     flags = flags or WithMasterVersion
