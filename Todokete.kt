@@ -1362,7 +1362,7 @@ fun main(args: Array<String>) {
   // TODO: is this always present? I don't see these rule description id's
   // in my client's user model responses but they're present when playing
   // from android x86
-  val saveRuleDescriptionResponse = saveRuleDescription(listOf(1))!!
+  var saveRuleDescriptionResponse = saveRuleDescription(listOf(1))!!
   randomDelay(4000)
   var skipLiveResponse = skipLive(
     live = startLiveResponse.live,
@@ -1377,6 +1377,9 @@ fun main(args: Array<String>) {
     cellId = 1004,
     deckId = 2
   )!!
+  randomDelay(4000)
+  saveRuleDescriptionResponse = saveRuleDescription(listOf(2))!!
+  randomDelay(4000)
   skipLiveResponse = skipLive(
     live = startLiveResponse.live,
     stamina = 5812,
