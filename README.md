@@ -42,6 +42,7 @@ and create your sifas accounts
   unlocking menu options
 - [x] `/trainingTree/fetchTrainingTree` supposed to get training locations
   or something like that but during the tutorial the response is empty
+- [x] `/trainingTree/levelUpCard`
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

@@ -1577,6 +1577,27 @@ fun fetchTrainingTree(cardMasterId: Int): FetchTrainingTreeResponse? {
   return parseResponse(response)
 }
 
+data class LevelUpCardRequest(
+  val additional_level: Int,
+  val card_master_id: Int
+)
+
+data class LevelUpCardResponse(val user_model_diff: UserModel)
+
+fun levelUpCard(
+  cardMasterId: Int,
+  additionalLevel: Int = 1
+): LevelUpCardResponse? {
+  val response = call(
+    path = "/trainingTree/levelUpCard",
+    payload = gson.toJson(LevelUpCardRequest(
+      card_master_id = cardMasterId,
+      additional_level = additionalLevel
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1658,4 +1679,6 @@ fun main(args: Array<String>) {
   userModelResponse = saveUserNaviVoice(ids = listOf(100010004))!!
   randomDelay(8000)
   val trainingTreeResponse = fetchTrainingTree(cardMasterId = 100012001)!!
+  randomDelay(8000)
+  val levelUpCardResponse = levelUpCard(cardMasterId = 100012001)!!
 }
