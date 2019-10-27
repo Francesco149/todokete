@@ -1519,7 +1519,7 @@ data class FetchBootstrapResponse(
   val mission_beginner_master_id: Int?
 )
 
-fun fetchBootstrapRequest(types: List<Int>): FetchBootstrapResponse? {
+fun fetchBootstrap(types: List<Int>): FetchBootstrapResponse? {
   val response = call(
     path = "/bootstrap/fetchBootstrap",
     payload = gson.toJson(FetchBootstrapRequest(
@@ -1605,5 +1605,5 @@ fun main(args: Array<String>) {
   randomDelay(10000)
   setFavoriteMember(id = 1)
   randomDelay(4000)
-  fetchBootstrapRequest(types = listOf(2, 3, 4, 5, 9, 10))
+  fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))
 }
