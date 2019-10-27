@@ -1974,6 +1974,37 @@ fun fetchPresent(): FetchPresentResponse? {
   return parseResponse(response)
 }
 
+data class ReceivePresentRequest(val ids: List<Int>)
+
+data class AddedCardResult(
+  val card_master_id: Int,
+  val level: Int,
+  val before_grade: Int,
+  val after_grade: Int,
+  val content: Content,
+  val limit_exceeded: Boolean,
+  val before_love_level_limit: Int,
+  val after_love_level_limit: Int
+)
+
+data class ReceivePresentResponse(
+  val user_model_diff: UserModel,
+  val present_items: List<PresentItem>,
+  val present_history_items: List<PresentHistoryItem>,
+  val received_present_items: List<Content>,
+  val limit_exceeded_items: List<PresentItem>,
+  val card_grade_up_result: List<AddedCardResult>,
+  val present_count: Int
+)
+
+fun receivePresent(ids: List<Int>): ReceivePresentResponse? {
+  val response = call(
+    path = "/present/receive",
+    payload = gson.toJson(ReceivePresentRequest(ids = ids))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -2150,6 +2181,13 @@ fun main(args: Array<String>) {
       fetchNoticeDetail(id = it.notice_id)!!
     }
   fetchNotice()!!
+  randomDelay(2000)
   saveUserNaviVoice(ids = listOf(100010046))!!
   val presents = fetchPresent()!!
+  randomDelay(2000)
+  saveRuleDescription(ids = listOf(20))!!
+  randomDelay(5000)
+  receivePresent(ids = presents.present_items.map { it.id })!!
+  randomDelay(9000)
+  fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
 }

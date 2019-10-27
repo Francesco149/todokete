@@ -68,6 +68,8 @@ and create your sifas accounts
   calling fetchBootstrap
 - [x] `/notice/fetchNotice` gets various notices, empty request
 - [x] `/present/fetch` gets a list of pending presents. empty request
+- [x] `/present/receive` opens presents, takes a list of present id's from
+  `/present/fetch`
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
