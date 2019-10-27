@@ -40,6 +40,8 @@ and create your sifas accounts
   screen
 - [x] `/navi/saveUserNaviVoice` not 100% sure, I think it has to do with
   unlocking menu options
+- [x] `/trainingTree/fetchTrainingTree` supposed to get training locations
+  or something like that but during the tutorial the response is empty
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

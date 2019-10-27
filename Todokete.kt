@@ -1555,6 +1555,27 @@ fun saveUserNaviVoice(ids: List<Int>): UserModelResponse? {
   return parseResponse(response)
 }
 
+data class FetchTrainingTreeRequest(val card_master_id: Int)
+
+data class UserCardTrainingTreeCell(
+  val cell_id: Int,
+  val activated_at: Long
+)
+
+data class FetchTrainingTreeResponse(
+  val user_card_training_tree_cell_list: List<UserCardTrainingTreeCell>
+)
+
+fun fetchTrainingTree(cardMasterId: Int): FetchTrainingTreeResponse? {
+  val response = call(
+    path = "/trainingTree/fetchTrainingTree",
+    payload = gson.toJson(FetchTrainingTreeRequest(
+      card_master_id = cardMasterId
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1634,4 +1655,6 @@ fun main(args: Array<String>) {
   tapLovePoint(memberMasterId = 1)
   randomDelay(4000)
   saveUserNaviVoice(ids = listOf(100010004))
+  randomDelay(8000)
+  fetchTrainingTree(cardMasterId = 100012001)
 }
