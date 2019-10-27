@@ -61,6 +61,8 @@ and create your sifas accounts
 - [x] `/dataLink/linkOnStartUpGameService` associates the currently logged
   account to a service id so it can be later retrieved with
   fetchGameServiceData or fetchGameServiceDataBeforeLogin
+- [x] `/loginBonus/readLoginBonus` marks login bonus splashscreens as read.
+  empty response
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

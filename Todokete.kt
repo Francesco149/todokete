@@ -1871,6 +1871,24 @@ fun linkGameService(): LinkGameServiceResponse? {
   return parseResponse(response)
 }
 
+data class ReadLoginBonusRequest(
+  val login_bonus_type: Int,
+  val login_bonus_id: Int
+)
+
+data class EmptyResponse(val empty: Int?)
+
+fun readLoginBonus(type: Int, id: Int): EmptyResponse? {
+  val response = call(
+    path = "/loginBonus/readLoginBonus",
+    payload = gson.toJson(ReadLoginBonusRequest(
+      login_bonus_type = type,
+      login_bonus_id = id
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -2025,4 +2043,21 @@ fun main(args: Array<String>) {
   val fetchGameServiceDataResponse = fetchGameServiceData()!!
   val linkGameServiceResponse = linkGameService()!!
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
+  // TODO: figure out what type are comeback, event_3d and birthday bonuses
+  val bonuses = bstrapResponse.fetch_bootstrap_login_bonus_response
+  for (bonus in bonuses.event_2d_login_bonuses) {
+    randomDelay(5000)
+    readLoginBonus(type = 3, id = bonus.login_bonus_id)!!
+  }
+  for (bonus in bonuses.beginner_login_bonuses) {
+    randomDelay(5000)
+    readLoginBonus(type = 2, id = bonus.login_bonus_id)!!
+  }
+  for (bonus in bonuses.login_bonuses) {
+    randomDelay(5000)
+    readLoginBonus(type = 1, id = bonus.login_bonus_id)!!
+  }
+  userModelResponse =
+    saveUserNaviVoice(ids = listOf(100010123, 100010113))!!
+  bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
 }
