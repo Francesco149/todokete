@@ -1981,9 +1981,9 @@ fun main(args: Array<String>) {
     targetScore = 50000
   )!!
   randomDelay(10000)
-  fetchGachaMenu()
+  val fetchGachaMenuResponse = fetchGachaMenu()!!
   randomDelay(4000)
-  drawGacha(id = 1)
+  val drawGachaResponse = drawGacha(id = 1)!!
   randomDelay(15000)
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
 }
