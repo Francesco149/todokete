@@ -67,6 +67,7 @@ and create your sifas accounts
   of notes can be obtained from `fetch_bootstrap_notice_response` when
   calling fetchBootstrap
 - [x] `/notice/fetchNotice` gets various notices, empty request
+- [x] `/present/fetch` gets a list of pending presents. empty request
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

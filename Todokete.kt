@@ -1940,6 +1940,40 @@ fun fetchNotice(): FetchNoticeResponse? {
   return parseResponse(response)
 }
 
+data class PresentItem(
+  val id: Int,
+  val content: Content,
+  val present_route_type: Int,
+  val present_route_id: Int?,
+  val param_server: LocalizedText,
+  val param_client: String,
+  val posted_at: Long,
+  val expired_at: Long,
+  val is_new: Boolean
+)
+
+data class PresentHistoryItem(
+  val content: Content,
+  val present_route_type: Int,
+  val present_route_id: Int?,
+  val param_server: LocalizedText,
+  val param_client: String,
+  val history_created_at: Long
+)
+
+data class FetchPresentResponse(
+  val present_items: List<PresentItem>,
+  val present_history_items: List<PresentHistoryItem>
+)
+
+fun fetchPresent(): FetchPresentResponse? {
+  val response = call(
+    path = "/present/fetch",
+    payload = gson.toJson(null)
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -2116,4 +2150,6 @@ fun main(args: Array<String>) {
       fetchNoticeDetail(id = it.notice_id)!!
     }
   fetchNotice()!!
+  saveUserNaviVoice(ids = listOf(100010046))!!
+  val presents = fetchPresent()!!
 }
