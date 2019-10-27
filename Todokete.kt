@@ -1310,11 +1310,12 @@ fun skipLive(
 
 data class SetFavoriteMemberRequest(val member_master_id: Int)
 
-fun setFavoriteMember(id: Int) {
-  val result = call(
+fun setFavoriteMember(id: Int): UserModelResponse? {
+  val response = call(
     path = "/communicationMember/setFavoriteMember",
     payload = gson.toJson(SetFavoriteMemberRequest(member_master_id = id))
   )
+  return parseResponse(response)
 }
 
 fun randomDeviceName(): String = randomLine("devices.txt")!!
