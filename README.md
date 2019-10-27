@@ -47,6 +47,7 @@ and create your sifas accounts
   start training. not sure where the cell id's come from
 - [x] `/communicationMember/finishUserStorySide` complete a character
   side story
+- [x] `/card/updateCardNewFlag` used to refresh cards info
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

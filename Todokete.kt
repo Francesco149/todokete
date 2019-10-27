@@ -1644,6 +1644,19 @@ fun finishUserStorySide(
   return parseResponse(response)
 }
 
+data class UpdateCardNewFlagRequest(val card_master_ids: List<Int>)
+data class UpdateCardNewFlagResponse(val user_model_diff: UserModel)
+
+fun updateCardNewFlag(masterIds: List<Int>): UpdateCardNewFlagResponse? {
+  val response = call(
+    path = "/card/updateCardNewFlag",
+    payload = gson.toJson(UpdateCardNewFlagRequest(
+      card_master_ids = masterIds
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1735,4 +1748,6 @@ fun main(args: Array<String>) {
   )!!
   randomDelay(30000)
   val storySideResponse = finishUserStorySide(masterId = 1000120011)!!
+  randomDelay(8000)
+  val updateCardResp = updateCardNewFlag(masterIds = listOf(100012001))!!
 }
