@@ -54,6 +54,7 @@ and create your sifas accounts
   a particular character
 - [x] `/livePartners/fetch` fetches a list of live partners. empty request
 - [x] `/gacha/fetchGachaMenu` gets the list of scouting pools, empty req
+- [x] `/gacha/draw` scout from a pool
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

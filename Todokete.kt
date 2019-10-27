@@ -1819,6 +1819,24 @@ fun fetchGachaMenu(): FetchGachaMenuResponse? {
   return parseResponse(response)
 }
 
+data class DrawGachaRequest(val gacha_draw_master_id: Int)
+
+data class DrawGachaResponse(
+  val gacha: Gacha,
+  val result_cards: List<AddedGachaCardResult>,
+  val result_bonuses: List<Content>,
+  val retry_gacha: RetryGacha,
+  val user_model_diff: UserModel
+)
+
+fun drawGacha(id: Int): DrawGachaResponse? {
+  val response = call(
+    path = "/gacha/draw",
+    payload = gson.toJson(DrawGachaRequest(gacha_draw_master_id = id))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1893,7 +1911,7 @@ fun main(args: Array<String>) {
   randomDelay(10000)
   userModelResponse = setFavoriteMember(id = 1)!!
   randomDelay(4000)
-  val bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+  var bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
   randomDelay(10000)
   userModelResponse = tapLovePoint(memberMasterId = 1)!!
   randomDelay(4000)
@@ -1964,4 +1982,8 @@ fun main(args: Array<String>) {
   )!!
   randomDelay(10000)
   fetchGachaMenu()
+  randomDelay(4000)
+  drawGacha(id = 1)
+  randomDelay(15000)
+  bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
 }
