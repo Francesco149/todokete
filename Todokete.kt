@@ -1706,6 +1706,35 @@ fun saveSuit(
   return parseResponse(response)
 }
 
+data class LivePartner(
+  val user_id: Int,
+  val name: LocalizedText,
+  val rank: Int,
+  val last_login_at: Long,
+  val card_by_category: Map<Int, OtherUserCard>,
+  val emblem_id: Int,
+  val is_friend: Boolean,
+  val introduction_message: LocalizedText
+)
+
+data class PartnerSelectState(
+  val live_partners: List<LivePartner>,
+  val friend_count: Int
+)
+
+// klab can't type partner
+data class FetchLiveParntersResponse(
+  val partner_select_state: PartnerSelectState
+)
+
+fun fetchLivePartners(): FetchLiveParntersResponse? {
+  val response = call(
+    path = "/livePartners/fetch",
+    payload = gson.toJson(null)
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1827,5 +1856,20 @@ fun main(args: Array<String>) {
     deckId = 1,
     cardIndex = 1,
     suitMasterId = 100012001
+  )!!
+  randomDelay(8000)
+  val fetchLivePartnersResponse = fetchLivePartners()
+  randomDelay(8000)
+  startLiveResponse = startLive(
+    liveDifficultyId = 31001101,
+    cellId = 1005,
+    deckId = 1
+  )!!
+  randomDelay(8000)
+  skipLiveResponse = skipLive(
+    live = startLiveResponse.live,
+    stamina = 7491,
+    power = 1341,
+    targetScore = 50000
   )!!
 }

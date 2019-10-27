@@ -52,6 +52,7 @@ and create your sifas accounts
   means yet. maybe related to the outfit they're wearing?
 - [x] `/liveDeck/saveSuit` not sure, but I think it saves the outfit for
   a particular character
+- [x] `/livePartners/fetch` fetches a list of live partners. empty request
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
