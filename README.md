@@ -55,6 +55,7 @@ and create your sifas accounts
 - [x] `/livePartners/fetch` fetches a list of live partners. empty request
 - [x] `/gacha/fetchGachaMenu` gets the list of scouting pools, empty req
 - [x] `/gacha/draw` scout from a pool
+- [x] `/tutorial/phaseEnd` ends the tutorial. empty request
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

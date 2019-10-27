@@ -1837,6 +1837,14 @@ fun drawGacha(id: Int): DrawGachaResponse? {
   return parseResponse(response)
 }
 
+fun tutorialPhaseEnd(): UserModelResponse? {
+  val response = call(
+    path = "/tutorial/phaseEnd",
+    payload = gson.toJson(null)
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1986,4 +1994,6 @@ fun main(args: Array<String>) {
   val drawGachaResponse = drawGacha(id = 1)!!
   randomDelay(15000)
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+  randomDelay(10000)
+  userModelResponse = tutorialPhaseEnd()!!
 }
