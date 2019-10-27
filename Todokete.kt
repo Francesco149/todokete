@@ -121,6 +121,7 @@ var requestId = 0 // incremented after every successful request
 var sessionKey = StartupKey.toByteArray()
 var randomBytes = Random.nextBytes(32) // regenerated on login/startup
 var userId = 0 // obtained after startup, or known before login
+var serviceId = generateServiceId() // known or generated on acc creation
 var flags = 0
 var masterVersion: String? = null // obtained after the first request
 var lastRequestTime: Long = 0
@@ -291,7 +292,7 @@ data class UserLinkData(
   val last_login_at: Long,
   val sns_coin: Int,
   val terms_of_use_version: Int,
-  val service_user_common_key: ByteArray // TODO: not 100% sure
+  var service_user_common_key: ByteArray // mask random bytes xor authkey
 )
 
 data class CurrentUserData(
@@ -311,14 +312,13 @@ data class FetchGameServiceDataBeforeLoginResponse(
 )
 
 fun fetchGameServiceDataBeforeLogin(
-  user_id: Int = -1,
-  service_id: String = generateServiceId()
+  user_id: Int = -1
 ): FetchGameServiceDataBeforeLoginResponse? {
   val result = call(
     path = "/dataLink/fetchGameServiceDataBeforeLogin",
     payload = gson.toJson(FetchGameServiceDataBeforeLoginRequest(
       user_id = user_id,
-      service_id = service_id
+      service_id = serviceId
     ))
   )
   return parseResponse(result)
@@ -1845,6 +1845,21 @@ fun tutorialPhaseEnd(): UserModelResponse? {
   return parseResponse(response)
 }
 
+data class FetchGameServiceDataRequest(
+  val service_id: String = serviceId,
+  val mask: String = generateMask()
+)
+
+data class FetchGameServiceDataResponse(val data: UserLinkData)
+
+fun fetchGameServiceData(): FetchGameServiceDataResponse? {
+  val response = call(
+    path = "/dataLink/fetchGameServiceData",
+    payload = gson.toJson(FetchGameServiceDataRequest())
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1996,4 +2011,6 @@ fun main(args: Array<String>) {
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
   randomDelay(10000)
   userModelResponse = tutorialPhaseEnd()!!
+  val fetchGameServiceDataResponse = fetchGameServiceData()!!
+  bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
 }

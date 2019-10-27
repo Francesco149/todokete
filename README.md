@@ -56,6 +56,8 @@ and create your sifas accounts
 - [x] `/gacha/fetchGachaMenu` gets the list of scouting pools, empty req
 - [x] `/gacha/draw` scout from a pool
 - [x] `/tutorial/phaseEnd` ends the tutorial. empty request
+- [x] `/dataLink/fetchGameServiceData` gets existing accounts
+  associated with a `service_id`
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
