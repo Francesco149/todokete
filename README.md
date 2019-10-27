@@ -38,6 +38,8 @@ and create your sifas accounts
   expired items, new badges, banners, notices, billing info
 - [x] `/navi/tapLovePoint` sent when you touch your waifu in the main
   screen
+- [x] `/navi/saveUserNaviVoice` not 100% sure, I think it has to do with
+  unlocking menu options
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

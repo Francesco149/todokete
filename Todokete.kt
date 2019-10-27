@@ -1543,6 +1543,18 @@ fun tapLovePoint(memberMasterId: Int): UserModelResponse? {
   return parseResponse(response)
 }
 
+data class SaveUserNaviVoiceRequest(val navi_voice_master_ids: List<Int>)
+
+fun saveUserNaviVoice(ids: List<Int>): UserModelResponse? {
+  val response = call(
+    path = "/navi/saveUserNaviVoice",
+    payload = gson.toJson(SaveUserNaviVoiceRequest(
+      navi_voice_master_ids = ids
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1620,4 +1632,6 @@ fun main(args: Array<String>) {
   fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))
   randomDelay(10000)
   tapLovePoint(memberMasterId = 1)
+  randomDelay(4000)
+  saveUserNaviVoice(ids = listOf(100010004))
 }
