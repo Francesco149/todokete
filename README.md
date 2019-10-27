@@ -45,6 +45,8 @@ and create your sifas accounts
 - [x] `/trainingTree/levelUpCard`
 - [x] `/trainingTree/activateTrainingTreeCell` probably sent when you
   start training. not sure where the cell id's come from
+- [x] `/communicationMember/finishUserStorySide` complete a character
+  side story
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

@@ -1625,6 +1625,25 @@ fun activateTrainingTreeCell(
   return parseResponse(response)
 }
 
+data class FinishUserStorySideRequest(
+  val story_side_master_id: Int,
+  val is_auto_mode: Boolean?
+)
+
+fun finishUserStorySide(
+  masterId: Int,
+  isAutoMode: Boolean? = false
+): UserModelResponse? {
+  val response = call(
+    path = "/communicationMember/finishUserStorySide",
+    payload = gson.toJson(FinishUserStorySideRequest(
+      story_side_master_id = masterId,
+      is_auto_mode = isAutoMode
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1714,4 +1733,6 @@ fun main(args: Array<String>) {
     cellMasterIds =
       listOf(17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
   )!!
+  randomDelay(30000)
+  val storySideResponse = finishUserStorySide(masterId = 1000120011)!!
 }
