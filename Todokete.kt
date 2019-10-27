@@ -1182,7 +1182,7 @@ data class LiveCardStat(
 
 data class LiveScore(
   val result_dict: Map<Int, LiveNoteScore>,
-  val wave_stat: Map<Int, Boolean> = emptyMap(), // empty when skipping
+  val wave_stat: Map<Int, Boolean>,
   val turn_stat_dict: Map<Int, LiveTurnStat>, // by note id
   val card_stat_dict: Map<Int, LiveCardStat>, // by card_master_id
   val target_score: Int,
@@ -1274,6 +1274,7 @@ fun skipLive(
   targetScore: Int
 ): FinishLiveResponse? {
   val notes = live.live_stage.live_notes
+  val liveWaveSetting = live.live_stage.live_wave_setting
   var turnStatDict = notes.map({ it.id to LiveTurnStat() })
     .toMap().toMutableMap()
   turnStatDict[1] = LiveTurnStat(current_life = stamina)
@@ -1286,6 +1287,7 @@ fun skipLive(
       live_id = live.live_id,
       live_score = LiveScore(
         result_dict = notes.map({ it.id to LiveNoteScore() }).toMap(),
+        wave_stat = liveWaveSetting.map({ it.id to False }).toMap(),
         turn_stat_dict = turnStatDict,
         card_stat_dict = mapOf(
           deck.suit_master_id_1 to deck.card_master_id_1,
