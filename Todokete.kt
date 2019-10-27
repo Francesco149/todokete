@@ -1889,6 +1889,26 @@ fun readLoginBonus(type: Int, id: Int): EmptyResponse? {
   return parseResponse(response)
 }
 
+data class FetchNoticeDetailRequest(val notice_id: Int)
+
+data class NoticeDetail(
+  val notice_id: Int,
+  val category: Int,
+  val title: LocalizedText,
+  val detail_text: LocalizedText,
+  val date: Long
+)
+
+data class FetchNoticeDetailResponse(val notice: NoticeDetail)
+
+fun fetchNoticeDetail(id: Int): FetchNoticeDetailResponse? {
+  val response = call(
+    path = "/notice/fetchNoticeDetail",
+    payload = gson.toJson(FetchNoticeDetailRequest(notice_id = id))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -2060,4 +2080,8 @@ fun main(args: Array<String>) {
   userModelResponse =
     saveUserNaviVoice(ids = listOf(100010123, 100010113))!!
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+  bstrapResponse.fetch_bootstrap_notice_response.super_notices
+    .lastOrNull()?.let {
+      fetchNoticeDetail(id = it.notice_id)!!
+    }
 }

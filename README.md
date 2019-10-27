@@ -63,6 +63,9 @@ and create your sifas accounts
   fetchGameServiceData or fetchGameServiceDataBeforeLogin
 - [x] `/loginBonus/readLoginBonus` marks login bonus splashscreens as read.
   empty response
+- [x] `/notice/fetchNoticeDetail` gets contents of a specific note. a list
+  of notes can be obtained from `fetch_bootstrap_notice_response` when
+  calling fetchBootstrap
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
