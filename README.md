@@ -58,6 +58,9 @@ and create your sifas accounts
 - [x] `/tutorial/phaseEnd` ends the tutorial. empty request
 - [x] `/dataLink/fetchGameServiceData` gets existing accounts
   associated with a `service_id`
+- [x] `/dataLink/linkOnStartUpGameService` associates the currently logged
+  account to a service id so it can be later retrieved with
+  fetchGameServiceData or fetchGameServiceDataBeforeLogin
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

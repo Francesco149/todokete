@@ -1860,6 +1860,17 @@ fun fetchGameServiceData(): FetchGameServiceDataResponse? {
   return parseResponse(response)
 }
 
+data class LinkGameServiceRequest(val service_id: String)
+data class LinkGameServiceResponse(val empty: Int?) // empty object
+
+fun linkGameService(): LinkGameServiceResponse? {
+  val response = call(
+    path = "/dataLink/linkOnStartUpGameService",
+    payload = gson.toJson(LinkGameServiceRequest(service_id = serviceId))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -2012,5 +2023,6 @@ fun main(args: Array<String>) {
   randomDelay(10000)
   userModelResponse = tutorialPhaseEnd()!!
   val fetchGameServiceDataResponse = fetchGameServiceData()!!
+  val linkGameServiceResponse = linkGameService()!!
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
 }
