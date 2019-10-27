@@ -9,6 +9,31 @@ me and other developers to reverse engineer the api further and test it.
 eventually i want this to be a module you can use to automatically manage
 and create your sifas accounts
 
+# build and run (linux)
+temporarily, you need nodejs to run an additional local service that
+generates push notification tokens. this will run on port 6969
+
+```
+cd token-generator
+npm i
+npm start
+```
+
+once that's running, you can build and run the client
+
+you need the kotlin compiler (kotlinc) which on void linux is package
+`kotlin-bin`
+
+my build script will automatically download and set up dependencies
+
+```
+# build and run
+./build.sh | tee -a output.log
+```
+
+it's recommended to save output to a log as some responses are very large
+to read with just terminal scrollback
+
 # progress
 - [x] `/login/startup`: creates a new account
 - [x] `/login/login`: log into existing account
@@ -70,31 +95,6 @@ and create your sifas accounts
 - [x] `/present/fetch` gets a list of pending presents. empty request
 - [x] `/present/receive` opens presents, takes a list of present id's from
   `/present/fetch`
-
-# build and run (linux)
-temporarily, you need nodejs to run an additional local service that
-generates push notification tokens. this will run on port 6969
-
-```
-cd token-generator
-npm i
-npm start
-```
-
-once that's running, you can build and run the client
-
-you need the kotlin compiler (kotlinc) which on void linux is package
-`kotlin-bin`
-
-my build script will automatically download and set up dependencies
-
-```
-# build and run
-./build.sh | tee -a output.log
-```
-
-it's recommended to save output to a log as some responses are very large
-to read with just terminal scrollback
 
 # rationale
 why kotlin? it just so happens that the http library used by the game is
