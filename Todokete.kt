@@ -1278,7 +1278,7 @@ fun skipLive(
     .toMap().toMutableMap()
   turnStatDict[1] = LiveTurnStat(current_life = stamina)
   turnStatDict[0] = LiveTurnStat(current_life = stamina)
-  turnStatDict[notes.size] = LiveTurnStat()
+  turnStatDict[notes.size + 1] = LiveTurnStat()
   val deck = userModel!!.user_live_deck_by_id[live.deck_id]!!
   val response = call(
     path = "/live/finish",
