@@ -1737,6 +1737,88 @@ fun fetchLivePartners(): FetchLiveParntersResponse? {
   return parseResponse(response)
 }
 
+data class GachaAppeal(
+  val card_master_id: Int?,
+  val appearance_type: Int?,
+  val main_image_asset: TextureStruktur,
+  val sub_image_asset: TextureStruktur,
+  val text_image_asset: TextureStruktur
+)
+
+data class GachaDraw(
+  val gacha_draw_master_id: Int,
+  val recover_type: Int,
+  val recover_at: Long,
+  val draw_count: Int,
+  val gacha_payment_master_id: Int,
+  val gacha_payment_amount: Int,
+  val gacha_point_amount: Int?,
+  val description: LocalizedText,
+  val is_bonus: Boolean,
+  val bonus_appeal_text: LocalizedText,
+  val retry_count: Int?,
+  val daily_limit: Int?,
+  val term_limit: Int?,
+  val remain_day_count: Int?,
+  val remain_term_count: Int?,
+  val performance_id: Int
+)
+
+data class Gacha(
+  val gacha_master_id: Int,
+  val gacha_type: Int,
+  val gacha_draw_type: Int,
+  val gacha_payment_type: Int,
+  val title: LocalizedText,
+  val banner_image_asset: TextureStruktur,
+  val is_time_limited: Boolean,
+  val end_at: Long,
+  val point_master_id: Int?,
+  val point_exchange_expire_at: Long,
+  val appeal_at: Long,
+  val notice_id: Int,
+  val appeal_view: Int,
+  val gacha_appeals: List<GachaAppeal>,
+  val gacha_draws: List<GachaDraw>
+)
+
+data class RetryGacha(
+  val gacha_draw_master_id: Int,
+  val remain_retry_count: Int,
+  val expire_at: Long
+)
+
+data class AddedGachaCardResult(
+  val gacha_lot_type: Int,
+  val card_master_id: Int,
+  val level: Int,
+  val before_grade: Int,
+  val after_grade: Int,
+  val content: Content,
+  val limit_exceeded: Boolean,
+  val before_love_level_limit: Int,
+  val after_love_level_limit: Int
+)
+
+data class GachaUnconfirmed(
+  val gacha: Gacha,
+  val retry_gacha: RetryGacha,
+  val result_cards: List<AddedGachaCardResult>
+)
+
+data class FetchGachaMenuResponse(
+  val gacha_list: List<Gacha>,
+  val gacha_unconfirmed: GachaUnconfirmed
+)
+
+fun fetchGachaMenu(): FetchGachaMenuResponse? {
+  val response = call(
+    path = "/gacha/fetchGachaMenu",
+    payload = gson.toJson(null)
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1880,4 +1962,6 @@ fun main(args: Array<String>) {
     power = 1341,
     targetScore = 50000
   )!!
+  randomDelay(10000)
+  fetchGachaMenu()
 }

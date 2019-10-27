@@ -53,6 +53,7 @@ and create your sifas accounts
 - [x] `/liveDeck/saveSuit` not sure, but I think it saves the outfit for
   a particular character
 - [x] `/livePartners/fetch` fetches a list of live partners. empty request
+- [x] `/gacha/fetchGachaMenu` gets the list of scouting pools, empty req
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
