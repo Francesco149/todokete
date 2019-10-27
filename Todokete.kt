@@ -1867,11 +1867,11 @@ fun main(args: Array<String>) {
   if (terms == 0) terms = 1 // TODO: is this how it works?
   var userModelResponse = termsAgreement(terms)!!
   randomDelay(9000)
-  userModelResponse  = setUserProfile(name = generateName())!!
+  userModelResponse = setUserProfile(name = generateName())!!
   randomDelay(9000)
-  userModelResponse  = setUserProfile(nickname = generateNickname())!!
+  userModelResponse = setUserProfile(nickname = generateNickname())!!
   randomDelay(4000)
-  userModelResponse  = setUserProfileBirthDay()!!
+  userModelResponse = setUserProfileBirthDay()!!
   randomDelay(10000)
   var finishUserStoryMainResponse = finishUserStoryMain(cellId = 1001)!!
   randomDelay(1000)
