@@ -1657,6 +1657,33 @@ fun updateCardNewFlag(masterIds: List<Int>): UpdateCardNewFlagResponse? {
   return parseResponse(response)
 }
 
+data class LiveSquad(
+  val card_master_ids: List<Int>,
+  val user_accessory_ids: List<Int?> = listOf(null, null, null)
+)
+
+data class SaveLiveDeckAllRequest(
+  val deck_id: Int,
+  val card_with_suit: Map<Int, Int?>,
+  val squad_dict: Map<Int, LiveSquad>
+)
+
+fun saveLiveDeckAll(
+  deckId: Int,
+  cardWithSuit: Map<Int, Int?>,
+  squad: Map<Int, LiveSquad>
+): UserModelResponse? {
+  val response = call(
+    path = "/liveDeck/saveDeckAll",
+    payload = gson.toJson(SaveLiveDeckAllRequest(
+      deck_id = deckId,
+      card_with_suit = cardWithSuit,
+      squad_dict = squad
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1750,4 +1777,27 @@ fun main(args: Array<String>) {
   val storySideResponse = finishUserStorySide(masterId = 1000120011)!!
   randomDelay(8000)
   val updateCardResp = updateCardNewFlag(masterIds = listOf(100012001))!!
+  randomDelay(8000)
+  // TODO: do I need to hardcode this? is there any way to generate it?
+  // what does cardWithSuit mean? why do the squad id's start from 101?
+  userModelResponse = saveLiveDeckAll(
+    deckId = 1,
+    cardWithSuit = mapOf(
+      100012001 to null,
+      102071001 to null,
+      102081001 to null,
+      101031001 to null,
+      101061001 to null,
+      101051001 to null,
+      100051001 to null,
+      100051001 to null,
+      100091001 to 100091001,
+      100081001 to 100081001
+    ),
+    squad = mapOf(
+      101 to LiveSquad(listOf(100012001, 101061001, 101051001)),
+      102 to LiveSquad(listOf(102081001, 101031001, 100051001)),
+      103 to LiveSquad(listOf(102071001, 100091001, 100081001))
+    )
+  )!!
 }

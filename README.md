@@ -48,6 +48,8 @@ and create your sifas accounts
 - [x] `/communicationMember/finishUserStorySide` complete a character
   side story
 - [x] `/card/updateCardNewFlag` used to refresh cards info
+- [x] `/liveDeck/saveDeckAll` saves live team/s. not sure what cardWithSuit
+  means yet. maybe related to the outfit they're wearing?
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
