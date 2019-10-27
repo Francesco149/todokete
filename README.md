@@ -43,6 +43,8 @@ and create your sifas accounts
 - [x] `/trainingTree/fetchTrainingTree` supposed to get training locations
   or something like that but during the tutorial the response is empty
 - [x] `/trainingTree/levelUpCard`
+- [x] `/trainingTree/activateTrainingTreeCell` probably sent when you
+  start training. not sure where the cell id's come from
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that

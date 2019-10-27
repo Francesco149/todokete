@@ -1598,6 +1598,33 @@ fun levelUpCard(
   return parseResponse(response)
 }
 
+data class ActivateTrainingTreeCellRequest(
+  val card_master_id: Int,
+  val cell_master_ids: List<Int>,
+  val pay_type: Int
+)
+
+data class ActivateTrainingTreeCellResponse(
+  val user_card_training_tree_cell_list: List<UserCardTrainingTreeCell>,
+  val user_model_diff: UserModel
+)
+
+fun activateTrainingTreeCell(
+  cardMasterId: Int,
+  cellMasterIds: List<Int>,
+  payType: Int = 1
+): ActivateTrainingTreeCellResponse? {
+  var response = call(
+    path = "/trainingTree/activateTrainingTreeCell",
+    payload = gson.toJson(ActivateTrainingTreeCellRequest(
+      card_master_id = cardMasterId,
+      cell_master_ids = cellMasterIds,
+      pay_type = payType
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1681,4 +1708,10 @@ fun main(args: Array<String>) {
   val trainingTreeResponse = fetchTrainingTree(cardMasterId = 100012001)!!
   randomDelay(8000)
   val levelUpCardResponse = levelUpCard(cardMasterId = 100012001)!!
+  randomDelay(8000)
+  val activateTrainingTreeResponse = activateTrainingTreeCell(
+    cardMasterId = 100012001,
+    cellMasterIds =
+      listOf(17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+  )!!
 }
