@@ -1863,6 +1863,8 @@ fun main(args: Array<String>) {
     cardIndex = 1,
     suitMasterId = 100012001
   )!!
+  delta = userModelResponse.user_model
+  userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
   randomDelay(8000)
   val fetchLivePartnersResponse = fetchLivePartners()
   randomDelay(8000)
