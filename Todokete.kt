@@ -735,8 +735,8 @@ data class UserModel(
   val user_member_by_member_id: Map<Int, UserMember>,
   val user_card_by_card_id: Map<Int, UserCard>,
   val user_suit_by_suit_id: Map<Int, UserSuit>,
-  val user_live_deck_by_id: Map<Int, UserLiveDeck>,
-  val user_live_party_by_id: Map<Int, UserLiveParty>,
+  var user_live_deck_by_id: Map<Int, UserLiveDeck>,
+  var user_live_party_by_id: Map<Int, UserLiveParty>,
   val user_lesson_deck_by_id: Map<Int, UserLessonDeck>,
   val user_live_mv_deck_by_id: Map<Int, UserLiveMvDeck>,
   val user_live_difficulty_by_difficulty_id: Map<Int, UserLiveDifficulty>,
@@ -1274,7 +1274,7 @@ fun skipLive(
   targetScore: Int
 ): FinishLiveResponse? {
   val notes = live.live_stage.live_notes
-  val liveWaveSetting = live.live_stage.live_wave_setting
+  val liveWaveSetting = live.live_stage.live_wave_settings
   var turnStatDict = notes.map({ it.id to LiveTurnStat() })
     .toMap().toMutableMap()
   turnStatDict[1] = LiveTurnStat(current_life = stamina)
@@ -1287,7 +1287,7 @@ fun skipLive(
       live_id = live.live_id,
       live_score = LiveScore(
         result_dict = notes.map({ it.id to LiveNoteScore() }).toMap(),
-        wave_stat = liveWaveSetting.map({ it.id to False }).toMap(),
+        wave_stat = liveWaveSetting.map({ it.id to false }).toMap(),
         turn_stat_dict = turnStatDict,
         card_stat_dict = mapOf(
           deck.suit_master_id_1 to deck.card_master_id_1,
@@ -1853,6 +1853,10 @@ fun main(args: Array<String>) {
       103 to LiveSquad(listOf(102071001, 100091001, 100081001))
     )
   )!!
+  // TODO: smarter way to update userModel?
+  var delta = userModelResponse.user_model
+  userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
+  userModel!!.user_live_party_by_id = delta.user_live_party_by_id
   randomDelay(8000)
   userModelResponse = saveSuit(
     deckId = 1,
