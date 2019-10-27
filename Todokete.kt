@@ -1614,7 +1614,7 @@ fun activateTrainingTreeCell(
   cellMasterIds: List<Int>,
   payType: Int = 1
 ): ActivateTrainingTreeCellResponse? {
-  var response = call(
+  val response = call(
     path = "/trainingTree/activateTrainingTreeCell",
     payload = gson.toJson(ActivateTrainingTreeCellRequest(
       card_master_id = cardMasterId,
