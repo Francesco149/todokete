@@ -1605,13 +1605,13 @@ fun main(args: Array<String>) {
   randomDelay(9000)
   var terms = userModel!!.user_status.terms_of_use_version
   if (terms == 0) terms = 1 // TODO: is this how it works?
-  val termsResponse = termsAgreement(terms)!!
+  var userModelResponse = termsAgreement(terms)!!
   randomDelay(9000)
-  val nameResponse = setUserProfile(name = generateName())!!
+  userModelResponse  = setUserProfile(name = generateName())!!
   randomDelay(9000)
-  val nicknameResponse = setUserProfile(nickname = generateNickname())!!
+  userModelResponse  = setUserProfile(nickname = generateNickname())!!
   randomDelay(4000)
-  val birthdayResponse = setUserProfileBirthDay()!!
+  userModelResponse  = setUserProfileBirthDay()!!
   randomDelay(10000)
   var finishUserStoryMainResponse = finishUserStoryMain(cellId = 1001)!!
   randomDelay(1000)
@@ -1624,7 +1624,7 @@ fun main(args: Array<String>) {
   // TODO: is this always present? I don't see these rule description id's
   // in my client's user model responses but they're present when playing
   // from android x86
-  var saveRuleDescriptionResponse = saveRuleDescription(ids = listOf(1))!!
+  userModelResponse = saveRuleDescription(ids = listOf(1))!!
   randomDelay(4000)
   var skipLiveResponse = skipLive(
     live = startLiveResponse.live,
@@ -1640,7 +1640,7 @@ fun main(args: Array<String>) {
     deckId = 2
   )!!
   randomDelay(4000)
-  saveRuleDescriptionResponse = saveRuleDescription(ids = listOf(2))!!
+  userModelResponse = saveRuleDescription(ids = listOf(2))!!
   randomDelay(4000)
   skipLiveResponse = skipLive(
     live = startLiveResponse.live,
@@ -1649,13 +1649,13 @@ fun main(args: Array<String>) {
     targetScore = 40000
   )!!
   randomDelay(10000)
-  setFavoriteMember(id = 1)
+  userModelResponse = setFavoriteMember(id = 1)!!
   randomDelay(4000)
-  fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))
+  val bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
   randomDelay(10000)
-  tapLovePoint(memberMasterId = 1)
+  userModelResponse = tapLovePoint(memberMasterId = 1)!!
   randomDelay(4000)
-  saveUserNaviVoice(ids = listOf(100010004))
+  userModelResponse = saveUserNaviVoice(ids = listOf(100010004))!!
   randomDelay(8000)
-  fetchTrainingTree(cardMasterId = 100012001)
+  val trainingTreeResponse = fetchTrainingTree(cardMasterId = 100012001)!!
 }
