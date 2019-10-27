@@ -1860,7 +1860,7 @@ fun randomDelay(ms: Int) =
 
 fun main(args: Array<String>) {
   testAssetState()
-  fetchGameServiceDataBeforeLogin()
+  val fetchBeforeLoginResponse = fetchGameServiceDataBeforeLogin()!!
   randomDelay(1000)
   val startupResponse = startup()!!
   val authKey = base64Decoder.decode(startupResponse.authorization_key)
