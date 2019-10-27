@@ -1909,6 +1909,37 @@ fun fetchNoticeDetail(id: Int): FetchNoticeDetailResponse? {
   return parseResponse(response)
 }
 
+data class NoticeSummary(
+  val notice_id: Int,
+  val category: Int,
+  val is_new: Boolean,
+  val title: LocalizedText,
+  val date: Long,
+  val banner_thumbnail: TextureStruktur
+)
+
+data class NoticeList(
+  val category: Int,
+  val new_arrival_ids: List<Int>,
+  val current_page: Int,
+  val max_page: Int,
+  val max_index: Int,
+  val notices: List<NoticeSummary>
+)
+
+data class FetchNoticeResponse(
+  val notice_lists: Map<Int, NoticeList>,
+  val notice_no_check_at: Long
+)
+
+fun fetchNotice(): FetchNoticeResponse? {
+  val response = call(
+    path = "/notice/fetchNotice",
+    payload = gson.toJson(null)
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -2084,4 +2115,5 @@ fun main(args: Array<String>) {
     .lastOrNull()?.let {
       fetchNoticeDetail(id = it.notice_id)!!
     }
+  fetchNotice()!!
 }
