@@ -1531,6 +1531,18 @@ fun fetchBootstrap(types: List<Int>): FetchBootstrapResponse? {
   return parseResponse(response)
 }
 
+data class TapLovePointRequest(val member_master_id: Int)
+
+fun tapLovePoint(memberMasterId: Int): UserModelResponse? {
+  val response = call(
+    path = "/navi/tapLovePoint",
+    payload = gson.toJson(TapLovePointRequest(
+      member_master_id = memberMasterId
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1606,4 +1618,6 @@ fun main(args: Array<String>) {
   setFavoriteMember(id = 1)
   randomDelay(4000)
   fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))
+  randomDelay(10000)
+  tapLovePoint(memberMasterId = 1)
 }

@@ -36,6 +36,8 @@ and create your sifas accounts
 - [x] `/bootstrap/fetchBootstrap` fetches all kinds of info based on the
   list of id's provided. things that can be fetched include login bonuses,
   expired items, new badges, banners, notices, billing info
+- [x] `/navi/tapLovePoint` sent when you touch your waifu in the main
+  screen
 
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
