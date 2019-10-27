@@ -1684,6 +1684,28 @@ fun saveLiveDeckAll(
   return parseResponse(response)
 }
 
+data class SaveLiveDeckMemberSuitRequest(
+  val deck_id: Int,
+  val card_index: Int,
+  val suit_master_id: Int
+)
+
+fun saveSuit(
+  deckId: Int,
+  cardIndex: Int,
+  suitMasterId: Int
+): UserModelResponse? {
+  val response = call(
+    path = "/liveDeck/saveSuit",
+    payload = gson.toJson(SaveLiveDeckMemberSuitRequest(
+      deck_id = deckId,
+      card_index = cardIndex,
+      suit_master_id = suitMasterId
+    ))
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 
 fun testAssetState() {
@@ -1799,5 +1821,11 @@ fun main(args: Array<String>) {
       102 to LiveSquad(listOf(102081001, 101031001, 100051001)),
       103 to LiveSquad(listOf(102071001, 100091001, 100081001))
     )
+  )!!
+  randomDelay(8000)
+  userModelResponse = saveSuit(
+    deckId = 1,
+    cardIndex = 1,
+    suitMasterId = 100012001
   )!!
 }
