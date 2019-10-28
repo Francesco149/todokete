@@ -34,6 +34,54 @@ my build script will automatically download and set up dependencies
 it's recommended to save output to a log as some responses are very large
 to read with just terminal scrollback
 
+# build and run (windows/cygwin)
+install nodejs, I don't think the additional tools for native extensions
+are necessary, not sure
+
+download java for windows x64 https://jdk.java.net/java-se-ri/9 and extract
+somewhere
+
+the java cacerts file will be broken. replace it with [this](https://mega.nz/#!hBZxHSwA!d248h7O3OVs22NSESCNelhfiXPcWh131mGRNZIJqaY0)
+. you should copy it to `path\to\java\lib\security` replacing the cacerts
+file
+
+from the cygwin installer select curl, sqlite, sqlite-devel, zip, git.
+other packages might be necessary that I missed, if you run into any
+issue re-run cygwin installer to install more pkgs
+
+run (replace paths as appropriate for your installs)
+
+```
+echo 'export PATH="$PATH:/cygdrive/c/path/to/java-9/bin"' >> .bashrc
+echo 'export PATH="$PATH:/cygdrive/c/Program Files/nodejs"' >> .bashrc
+curl -s https://get.sdkman.io | bash
+sdk install kotlin
+```
+
+last command will prompt you to run some init command. run it
+
+then run
+
+```
+source ~/.bashrc
+```
+
+now you can
+
+```
+git clone https://github.com/Francesco149/todokete ~/todokete
+cd ~/todokete/token-generator
+npm i
+npm start
+```
+
+and in another cygwin window:
+
+```
+cd ~/todokete
+./build.sh
+```
+
 # progress
 - [x] `/login/startup`: creates a new account
 - [x] `/login/login`: log into existing account
