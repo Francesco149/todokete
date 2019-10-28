@@ -37,6 +37,7 @@ dep https://repo1.maven.org/maven2/com/ibm/icu/icu4j/63.1/icu4j-63.1.jar 0940c61
 dep https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-reflect/1.3.11/kotlin-reflect-1.3.11.jar b8472ffb8319c8b53861effe6aa95b1521f1cfdaac3fc16033e35864f112496d
 dep https://repo1.maven.org/maven2/org/slf4j/slf4j-simple/1.6.1/slf4j-simple-1.6.1.jar 14c6e9bdff71af1fb7054f9326159cea8bb5c1eb238159179ca911149c138e1d
 dep https://repo1.maven.org/maven2/org/slf4j/slf4j-api/1.7.25/slf4j-api-1.7.25.jar 18c4a0095d5c1da6b817592e767bb23d29dd2f560ad74df75ff3961dbde25b79
+dep https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.28.0/sqlite-jdbc-3.28.0.jar 93784e56dbf54625e06c992cf83f70e9c1bddd5c6ad1d3f01308c87b1d961b60
 
 compile() {
   echo

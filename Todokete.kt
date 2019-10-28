@@ -26,6 +26,10 @@ import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.spec.X509EncodedKeySpec
+import java.sql.DriverManager
+import java.sql.ResultSet
+import java.sql.SQLException
+import java.sql.Statement
 import java.util.Base64
 import java.util.GregorianCalendar
 import java.util.UUID
@@ -113,6 +117,133 @@ fun hmacSha1(key: ByteArray, data: ByteArray): String {
   val hmac = Mac.getInstance("HmacSHA1")
   hmac.init(hmacKey)
   return hmac.doFinal(data).toHexString()
+}
+
+// ------------------------------------------------------------------------
+
+val sqlStatement: Statement by lazy {
+  var stmt: Statement? = null
+  while (stmt == null) {
+    try {
+      stmt = DriverManager
+        .getConnection("jdbc:sqlite:todokete.db")
+        .createStatement()
+      stmt.setQueryTimeout(30)
+      stmt.executeUpdate("""
+      create table if not exists accounts(
+        id integer primary key,
+        serviceId char[22] not null,
+        authCount integer not null,
+        stars integer,
+        lastLogin integer,
+        status integer not null,
+        deviceToken char[154]
+      )
+      """)
+    } catch (e: SQLException) {
+      println("sqlite error: $e")
+      Thread.sleep(1000)
+    }
+  }
+  stmt!!
+}
+
+fun sqlUpdate(sql: String) {
+  while (true) {
+    try {
+      sqlStatement.executeUpdate(sql)
+      return
+    } catch (e: SQLException) {
+      println("sqlite error: $e")
+      Thread.sleep(1000)
+    }
+  }
+}
+
+fun sqlUpdateById(sql: String) =
+  sqlUpdate("update accounts $sql where id = $userId")
+
+fun sqlQuery(sql: String): ResultSet {
+  while (true) {
+    try {
+      return sqlStatement.executeQuery(sql)
+    } catch (e: SQLException) {
+      println("sqlite error: $e")
+      Thread.sleep(1000)
+    }
+  }
+}
+
+fun sqlQueryById(sql: String = "*") =
+  sqlQuery("select $sql from accounts where id = $userId")
+
+fun sqlQueryIntById(field: String): Int? {
+  val rowSet = sqlQueryById(field)
+  if (rowSet.next()) {
+    return rowSet.getInt(field)
+  }
+  return null
+}
+
+fun sqlNewAccount() {
+  val startup = SqlAccountStatus.Startup.value
+  sqlUpdate("insert into " +
+    "accounts(id, serviceId, status, authCount, deviceToken) " +
+    "values($userId, '$serviceId', $startup, 1, '$deviceToken')")
+}
+
+fun sqlIncreaseAuthCount() {
+  val time = System.currentTimeMillis()
+  sqlUpdateById("set authCount = authCount + 1, lastLogin = $time")
+}
+
+fun sqlAuthCount(): Int? = sqlQueryIntById("authCount")
+
+fun sqlStatus(): SqlAccountStatus? {
+  sqlQueryIntById("status")?.let { return SqlAccountStatus.fromInt(it) }
+  return null
+}
+
+fun sqlSetStatus(status: SqlAccountStatus) {
+  val value = status.value
+  sqlUpdateById("set status = $value")
+}
+
+fun sqlSetStars(stars: Int) = sqlUpdateById("set stars = $stars")
+fun sqlSetDeviceToken(token: String) =
+  sqlUpdateById("set device_token = $token")
+
+enum class SqlAccountStatus(val value: Int) {
+  Startup(1),
+  TermsAgreement(2),
+  SetName(3),
+  SetNickName(4),
+  SetBirthDay(5),
+  Story1001(6),
+  RuleDescription1(7),
+  Live30001301(8),
+  Story1003(9),
+  RuleDescription2(10),
+  Live31007301(11),
+  SetFavoriteMember(12),
+  TapLovePoint(13),
+  NaviVoice100010004(14),
+  LevelUpCard(15),
+  Training(16),
+  StorySide(17),
+  NewFlag(18),
+  SaveLiveDeck(19),
+  SaveSuit(20),
+  Live31001101(21),
+  DrawGacha(22),
+  TutorialEnd(23),
+  LinkGameService(24);
+
+  companion object {
+    private val map = SqlAccountStatus.values()
+      .associateBy(SqlAccountStatus::value)
+    fun fromInt(type: Int) = map[type]
+  }
 }
 
 // ------------------------------------------------------------------------
@@ -351,7 +482,9 @@ fun startup(): StartupResponse? {
       time_difference = offset
     ))
   )
-  return parseResponse(result)
+  val resp: StartupResponse? = parseResponse(result)
+  resp?.let { userId = it.user_id }
+  return resp
 }
 
 data class LoginRequest(
@@ -2023,10 +2156,12 @@ fun main(args: Array<String>) {
   val fetchBeforeLoginResponse = fetchGameServiceDataBeforeLogin()!!
   randomDelay(1000)
   val startupResponse = startup()!!
+  sqlNewAccount()
   val authKey = base64Decoder.decode(startupResponse.authorization_key)
   sessionKey = authKey.xor(randomBytes)
   randomDelay(2000)
   val loginResponse = login(startupResponse.user_id)!!
+  sqlIncreaseAuthCount()
   userModel = loginResponse.user_model // TODO: auto update this
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
   sessionKey = loginSessionKey.xor(randomBytes)
@@ -2034,14 +2169,19 @@ fun main(args: Array<String>) {
   var terms = userModel!!.user_status.terms_of_use_version
   if (terms == 0) terms = 1 // TODO: is this how it works?
   var userModelResponse = termsAgreement(terms)!!
+  sqlSetStatus(SqlAccountStatus.TermsAgreement)
   randomDelay(9000)
   userModelResponse = setUserProfile(name = generateName())!!
+  sqlSetStatus(SqlAccountStatus.SetName)
   randomDelay(9000)
   userModelResponse = setUserProfile(nickname = generateNickname())!!
+  sqlSetStatus(SqlAccountStatus.SetNickName)
   randomDelay(4000)
   userModelResponse = setUserProfileBirthDay()!!
+  sqlSetStatus(SqlAccountStatus.SetBirthDay)
   randomDelay(10000)
   var finishUserStoryMainResponse = finishUserStoryMain(cellId = 1001)!!
+  sqlSetStatus(SqlAccountStatus.Story1001)
   randomDelay(1000)
   var startLiveResponse = startLive(
     liveDifficultyId = 30001301,
@@ -2053,6 +2193,7 @@ fun main(args: Array<String>) {
   // in my client's user model responses but they're present when playing
   // from android x86
   userModelResponse = saveRuleDescription(ids = listOf(1))!!
+  sqlSetStatus(SqlAccountStatus.RuleDescription1)
   randomDelay(4000)
   var skipLiveResponse = skipLive(
     live = startLiveResponse.live,
@@ -2060,8 +2201,10 @@ fun main(args: Array<String>) {
     power = 1040,
     targetScore = 35000
   )!!
+  sqlSetStatus(SqlAccountStatus.Live30001301)
   randomDelay(10000)
   finishUserStoryMainResponse = finishUserStoryMain(cellId = 1003)!!
+  sqlSetStatus(SqlAccountStatus.Story1003)
   startLiveResponse = startLive(
     liveDifficultyId = 31007301,
     cellId = 1004,
@@ -2069,6 +2212,7 @@ fun main(args: Array<String>) {
   )!!
   randomDelay(4000)
   userModelResponse = saveRuleDescription(ids = listOf(2))!!
+  sqlSetStatus(SqlAccountStatus.RuleDescription2)
   randomDelay(4000)
   skipLiveResponse = skipLive(
     live = startLiveResponse.live,
@@ -2076,28 +2220,36 @@ fun main(args: Array<String>) {
     power = 1047,
     targetScore = 40000
   )!!
+  sqlSetStatus(SqlAccountStatus.Live31007301)
   randomDelay(10000)
   userModelResponse = setFavoriteMember(id = 1)!!
+  sqlSetStatus(SqlAccountStatus.SetFavoriteMember)
   randomDelay(4000)
   var bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
   randomDelay(10000)
   userModelResponse = tapLovePoint(memberMasterId = 1)!!
+  sqlSetStatus(SqlAccountStatus.TapLovePoint)
   randomDelay(4000)
   userModelResponse = saveUserNaviVoice(ids = listOf(100010004))!!
+  sqlSetStatus(SqlAccountStatus.NaviVoice100010004)
   randomDelay(8000)
   val trainingTreeResponse = fetchTrainingTree(cardMasterId = 100012001)!!
   randomDelay(8000)
   val levelUpCardResponse = levelUpCard(cardMasterId = 100012001)!!
+  sqlSetStatus(SqlAccountStatus.LevelUpCard)
   randomDelay(8000)
   val activateTrainingTreeResponse = activateTrainingTreeCell(
     cardMasterId = 100012001,
     cellMasterIds =
       listOf(17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
   )!!
+  sqlSetStatus(SqlAccountStatus.Training)
   randomDelay(30000)
   val storySideResponse = finishUserStorySide(masterId = 1000120011)!!
+  sqlSetStatus(SqlAccountStatus.StorySide)
   randomDelay(8000)
   val updateCardResp = updateCardNewFlag(masterIds = listOf(100012001))!!
+  sqlSetStatus(SqlAccountStatus.NewFlag)
   randomDelay(8000)
   // TODO: do I need to hardcode this? is there any way to generate it?
   // what does cardWithSuit mean? why do the squad id's start from 101?
@@ -2121,6 +2273,7 @@ fun main(args: Array<String>) {
       103 to LiveSquad(listOf(102071001, 100091001, 100081001))
     )
   )!!
+  sqlSetStatus(SqlAccountStatus.SaveLiveDeck)
   // TODO: smarter way to update userModel?
   var delta = userModelResponse.user_model
   userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
@@ -2131,6 +2284,7 @@ fun main(args: Array<String>) {
     cardIndex = 1,
     suitMasterId = 100012001
   )!!
+  sqlSetStatus(SqlAccountStatus.SaveSuit)
   delta = userModelResponse.user_model
   userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
   randomDelay(8000)
@@ -2148,16 +2302,20 @@ fun main(args: Array<String>) {
     power = 1341,
     targetScore = 50000
   )!!
+  sqlSetStatus(SqlAccountStatus.Live31001101)
   randomDelay(10000)
   val fetchGachaMenuResponse = fetchGachaMenu()!!
   randomDelay(4000)
   val drawGachaResponse = drawGacha(id = 1)!!
+  sqlSetStatus(SqlAccountStatus.DrawGacha)
   randomDelay(15000)
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
   randomDelay(10000)
   userModelResponse = tutorialPhaseEnd()!!
+  sqlSetStatus(SqlAccountStatus.TutorialEnd)
   val fetchGameServiceDataResponse = fetchGameServiceData()!!
   val linkGameServiceResponse = linkGameService()!!
+  sqlSetStatus(SqlAccountStatus.LinkGameService)
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
   // TODO: figure out what type are comeback, event_3d and birthday bonuses
   val bonuses = bstrapResponse.fetch_bootstrap_login_bonus_response
@@ -2187,7 +2345,9 @@ fun main(args: Array<String>) {
   randomDelay(2000)
   saveRuleDescription(ids = listOf(20))!!
   randomDelay(5000)
-  receivePresent(ids = presents.present_items.map { it.id })!!
+  val presentResponse =
+    receivePresent(ids = presents.present_items.map { it.id })!!
+  sqlSetStars(presentResponse.user_model_diff.user_status.free_sns_coin)
   randomDelay(9000)
   fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
 }

@@ -1,3 +1,4 @@
 *.jar
 *.log
+*.db
 node_modules
