@@ -3,6 +3,12 @@
 dir="$(dirname "$0")"
 wdir="$(realpath "$dir")"
 classpath=""
+classpath_separator=":"
+
+case "$(uname -s)" in
+CYGWIN*|MINGW32*|MSYS*)
+  classpath_separator=";" ;;
+esac
 
 dep() {
   url="$1"
@@ -18,7 +24,7 @@ dep() {
     exit 1
   fi
   printf '\r[ok] %s' "$name"
-  classpath="$classpath:deps/$name"
+  classpath="${classpath}${classpath_separator}deps/$name"
   echo
 }
 
@@ -50,9 +56,9 @@ compile() {
 run() {
   echo
   echo "# running"
-  java -cp "${classpath}:${1}.jar" "${1}Kt" || exit
+  java -cp "${classpath}${classpath_separator}${1}.jar" "${1}Kt" || exit
   while [ ${LOOP:-false} ]; do
-    java -cp "${classpath}:${1}.jar" "${1}Kt" || exit
+    java -cp "${classpath}${classpath_separator}${1}.jar" "${1}Kt" || exit
   done
 }
 
