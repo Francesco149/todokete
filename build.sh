@@ -51,6 +51,9 @@ run() {
   echo
   echo "# running"
   java -cp "${classpath}:${1}.jar" "${1}Kt" || exit
+  while [ ${LOOP:-false} ]; do
+    java -cp "${classpath}:${1}.jar" "${1}Kt" || exit
+  done
 }
 
 compile_and_run() {
