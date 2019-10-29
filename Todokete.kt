@@ -2547,9 +2547,9 @@ fun generateNickname(): String = randomLine("names.txt")!!.limitLen(10)
 fun generateDeviceName(): String = randomLine("devices.txt")!!
 
 fun generateServiceId(): String {
-  return "g" + List(21) { "0123456789".random() }.joinToString("")
+  return "g" + List(20) { "0123456789".random() }.joinToString("")
   // I think this is the format for the android games hub or whatever
-  // return "a_" + List(20) { "0123456789".random() }.joinToString("")
+  // return "a_" + List(19) { "0123456789".random() }.joinToString("")
 }
 
 fun getPushNotificationToken(): String {
