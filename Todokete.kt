@@ -2436,21 +2436,6 @@ enum class SqlAccountStatus(val value: Int) {
   }
 }
 
-// ------------------------------------------------------------------------
-
-// just in case I accidentally break critical functions
-init {
-  sanityCheck()
-}
-
-fun sanityCheck() {
-  val randomBytes =
-    base64Decoder.decode("CB7tjOEZK6IQJrX93O0BuTjM5txYFmFO8sv1Pq9eAcE=")
-  val generated = assetStateLogGenerateV2()
-  val expected = "D9NtY0n3oGxKjhaaJtABDcErt3xQ6kV5gjwD9kmKTG9SprprtHN7" +
-    "Yz8vUHfZpisWHG3lgU2Lh43ELGIOWIUKN3S3C8Bx3BVU0w=="
-  assert(generated == expected)
-}
 } // AllStarsClient
 
 // ------------------------------------------------------------------------
