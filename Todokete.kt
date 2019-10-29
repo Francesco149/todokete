@@ -7,6 +7,8 @@
 //
 // For more information, please refer to <http://unlicense.org/>
 
+import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.subcommands
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
@@ -29,7 +31,6 @@ import java.security.spec.X509EncodedKeySpec
 import java.sql.DriverManager
 import java.sql.ResultSet
 import java.sql.SQLException
-import java.sql.Statement
 import java.util.Base64
 import java.util.GregorianCalendar
 import java.util.UUID
@@ -70,6 +71,8 @@ val gson = GsonBuilder()
 fun randomDelay(ms: Int) =
   Thread.sleep((ms + (-ms / 5..ms / 5).random()).toLong())
 
+fun String.fromBase64() = base64Decoder.decode(this)
+fun ByteArray.toBase64() = base64Encoder.encodeToString(this)
 fun ByteArray.toHexString() = joinToString("") { "%02x".format(it) }
 
 // xors two ByteArrays together. result is truncated to shortest array
@@ -80,24 +83,11 @@ fun ByteArray.xor(other: ByteArray) =
 fun String.hexStringToByteArray() =
   chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
-fun generateServiceId(): String {
-  return "g" + List(21) { "0123456789".random() }.joinToString("")
-  // I think this is the format for the android games hub or whatever
-  // return "a_" + List(20) { "0123456789".random() }.joinToString("")
-}
-
 // pretty print json from json string
 fun prettyPrint(result: String) {
   val pp = GsonBuilder().setPrettyPrinting().create()
   val array = JsonParser.parseString(result).getAsJsonArray()
   println(pp.toJson(array))
-}
-
-fun getPushNotificationToken(): String {
-  // TODO: implement firebase messaging in kotlin
-  println("waiting for token-generator...")
-  val request = Request.Builder().url("http://127.0.0.1:6969").build()
-  return httpClient.newCall(request).execute().body()!!.string()
 }
 
 // generics are a mistake that cause people to come up with useless
@@ -213,13 +203,13 @@ YFMAhTytVk48qO4ViCN3snFs0AURU06niM98MIcEUnj9vj6kOBlOGv4JWQIDAQAB
   val jdbcPath: String = "jdbc:sqlite:todokete.db",
 
   // these only need to be set if you're making a new account
-  val deviceName: String = "",
+  var deviceName: String = "To be filled by O.E.M. To be filled by O.E.M.",
   val nickname: String = "",
   val name: String = "",
 
-  val deviceToken: String = getPushNotificationToken(),
+  var deviceToken: String = "",
   var userId: Int = 0, // obtained after startup, or known before login
-  var serviceId: String = generateServiceId() // known or generated
+  var serviceId: String = "" // known or generated
 ) {
 
 // ------------------------------------------------------------------------
@@ -351,8 +341,8 @@ inline fun <reified T> parseResponse(result: String): T? {
 // api
 
 fun generateMask(): String {
-  val bytes = publicEncrypt(Random.nextBytes(32))
-  return base64Encoder.encodeToString(bytes)
+  randomBytes = Random.nextBytes(32)
+  return publicEncrypt(randomBytes).toBase64()
 }
 
 data class FetchGameServiceDataBeforeLoginRequest(
@@ -368,7 +358,7 @@ data class UserLinkData(
   val last_login_at: Long,
   val sns_coin: Int,
   val terms_of_use_version: Int,
-  var service_user_common_key: ByteArray // mask random bytes xor authkey
+  var service_user_common_key: ByteArray
 )
 
 data class CurrentUserData(
@@ -398,7 +388,12 @@ fun fetchGameServiceDataBeforeLogin(
       mask = generateMask()
     ))
   )
-  return parseResponse(result)
+  val res: FetchGameServiceDataBeforeLoginResponse? = parseResponse(result)
+  res?.data?.linked_data?.let {
+    it.service_user_common_key =
+      it.authorization_key.fromBase64().xor(randomBytes)
+  }
+  return res
 }
 
 data class StartupRequest(
@@ -415,15 +410,12 @@ data class StartupResponse(
 fun startup(): StartupResponse? {
   val advertisingId = UUID.randomUUID().toString()
   val resemara = md5(advertisingId + packageName)
-  randomBytes = Random.nextBytes(32)
-  val maskBytes = publicEncrypt(randomBytes)
-  val mask = base64Encoder.encodeToString(maskBytes)
   val timeZone = GregorianCalendar().getTimeZone()
   val offset = timeZone.getRawOffset() / 1000
   val result = call(
     path = "/login/startup",
     payload = gson.toJson(StartupRequest(
-      mask = mask,
+      mask = generateMask(),
       resemara_detection_identifier = resemara,
       time_difference = offset
     ))
@@ -881,7 +873,7 @@ data class LoginResponse(
 )
 
 fun assetStateLogGenerateV2(): String {
-  val randomBytes64 = base64Encoder.encodeToString(randomBytes)
+  val randomBytes64 = randomBytes.toBase64()
   val libHashChar = (randomBytes64[0].toInt() and 1) + 1
   val libHashType = randomBytes64[libHashChar].toInt().rem(3)
   val pkgHashChar = 2 - (randomBytes64[0].toInt() and 1)
@@ -946,20 +938,16 @@ fun assetStateLogGenerateV2(): String {
     d = (d shr 19) xor b xor d xor (b shr 8)
     h = a
   }
-  return base64Encoder
-    .encodeToString(signatures.toByteArray().xor(xorBytes))
+  return signatures.toByteArray().xor(xorBytes).toBase64()
 }
 
 fun login(): LoginResponse? {
-  randomBytes = Random.nextBytes(32)
-  val maskBytes = publicEncrypt(randomBytes)
-  val mask = base64Encoder.encodeToString(maskBytes)
   val result = call(
     path = "/login/login",
     payload = gson.toJson(LoginRequest(
       user_id = userId,
       auth_count = sqlAuthCount()!!,
-      mask = mask,
+      mask = generateMask(),
       asset_state = assetStateLogGenerateV2()
     ))
   )
@@ -1546,12 +1534,12 @@ data class FetchBootstrapResponse(
   val user_model_diff: UserModel,
   val user_info_trigger: UserInfoTrigger,
   val billing_state_info: BillingStateInfo,
-  val fetch_bootstrap_banner_response: BootstrapBanner,
-  val fetch_bootstrap_new_badge_response: BootstrapNewBadge,
-  val fetch_bootstrap_pickup_info_response: BootstrapPickupInfo,
-  val fetch_bootstrap_expired_item_response: BootstrapExpiredItem,
-  val fetch_bootstrap_login_bonus_response: BootstrapLoginBonus,
-  val fetch_bootstrap_notice_response: BootstrapNotice,
+  val fetch_bootstrap_banner_response: BootstrapBanner?,
+  val fetch_bootstrap_new_badge_response: BootstrapNewBadge?,
+  val fetch_bootstrap_pickup_info_response: BootstrapPickupInfo?,
+  val fetch_bootstrap_expired_item_response: BootstrapExpiredItem?,
+  val fetch_bootstrap_login_bonus_response: BootstrapLoginBonus?,
+  val fetch_bootstrap_notice_response: BootstrapNotice?,
   val mission_beginner_master_id: Int?
 )
 
@@ -1893,7 +1881,12 @@ fun fetchGameServiceData(): FetchGameServiceDataResponse? {
       mask = generateMask()
     ))
   )
-  return parseResponse(response)
+  val res: FetchGameServiceDataResponse? = parseResponse(response)
+  res?.data?.let {
+    it.service_user_common_key =
+      it.authorization_key.fromBase64().xor(randomBytes)
+  }
+  return res
 }
 
 data class LinkGameServiceRequest(val service_id: String)
@@ -2056,17 +2049,45 @@ public fun makeAccount() {
   loginAndGetGifts()
 }
 
+// picks a random account that hasn't been logged in hoursAgo hours or more
+// then sets up the client to log it in. returns serviceId
+public fun getStaleAccount(hoursAgo: Long = 24): String? {
+  val old = System.currentTimeMillis() - 3600000.toLong() * hoursAgo
+  val rowSet = sqlQuery(
+    "select serviceId from accounts where lastLogin < $old"
+  )
+  if (rowSet.next()) {
+    serviceId = rowSet.getString("serviceId")
+    return serviceId
+  }
+  return null
+}
+
 public fun loginAndCompleteTutorial() {
-  // TODO: handle previously created account, store session_key in database
-  // or get it from fetchBeforeLogin the first time
-  // TODO: sqlGetServiceUserCommonKey()?.let { ... }
+  // if we get here from makeAccount, sessionKey is set and we dont do this
+  if (sessionKey.contentEquals(startupKey.toByteArray())) {
+    // on first login we get and store the sessionKey from the link data
+    // otherwise, just use the stored one
+    sqlGetServiceUserCommonKey()?.let { sessionKey = it }
+    ?: run {
+      val fetchResponse = fetchGameServiceDataBeforeLogin()!!
+      val data = fetchResponse.data!!.linked_data
+      sqlSetServiceUserCommonKey(data.service_user_common_key)
+      sessionKey = data.service_user_common_key
+      // load other account data from db
+      userId = data.user_id
+      sqlGetDeviceName()?.let { deviceName = it }
+      ?: run { sqlSetDeviceName(deviceName) }
+      deviceToken = sqlGetDeviceToken()!!
+    }
+  }
   val loginResponse = login()!!
   sqlIncreaseAuthCount()
   userModel = loginResponse.user_model // TODO: auto update this
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
   sessionKey = loginSessionKey.xor(randomBytes)
   randomDelay(9000)
-  while (tutorialStep());
+  while (tutorialStep()) { }
 }
 
 fun tutorialStep(): Boolean {
@@ -2276,37 +2297,41 @@ public fun loginAndGetGifts() {
   var bstrapResponse =
     fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
   // TODO: figure out what type are comeback, event_3d and birthday bonuses
-  val bonuses = bstrapResponse.fetch_bootstrap_login_bonus_response
-  for (bonus in bonuses.event_2d_login_bonuses) {
-    randomDelay(5000)
-    readLoginBonus(type = 3, id = bonus.login_bonus_id)!!
-  }
-  for (bonus in bonuses.beginner_login_bonuses) {
-    randomDelay(5000)
-    readLoginBonus(type = 2, id = bonus.login_bonus_id)!!
-  }
-  for (bonus in bonuses.login_bonuses) {
-    randomDelay(5000)
-    readLoginBonus(type = 1, id = bonus.login_bonus_id)!!
+  bstrapResponse.fetch_bootstrap_login_bonus_response?.let {
+    for (bonus in it.event_2d_login_bonuses) {
+      randomDelay(5000)
+      readLoginBonus(type = 3, id = bonus.login_bonus_id)!!
+    }
+    for (bonus in it.beginner_login_bonuses) {
+      randomDelay(5000)
+      readLoginBonus(type = 2, id = bonus.login_bonus_id)!!
+    }
+    for (bonus in it.login_bonuses) {
+      randomDelay(5000)
+      readLoginBonus(type = 1, id = bonus.login_bonus_id)!!
+    }
   }
   saveUserNaviVoice(ids = listOf(100010123, 100010113))!!
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
-  bstrapResponse.fetch_bootstrap_notice_response.super_notices
-    .lastOrNull()?.let {
+  bstrapResponse
+    .fetch_bootstrap_notice_response?.super_notices?.lastOrNull()?.let {
       fetchNoticeDetail(id = it.notice_id)!!
     }
   fetchNotice()!!
   randomDelay(2000)
   saveUserNaviVoice(ids = listOf(100010046))!!
   val presents = fetchPresent()!!
-  randomDelay(2000)
-  saveRuleDescription(ids = listOf(20))!!
-  randomDelay(5000)
-  val presentResponse =
-    receivePresent(ids = presents.present_items.map { it.id })!!
-  sqlSetStars(presentResponse.user_model_diff.user_status.free_sns_coin)
-  randomDelay(9000)
-  fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+  if (presents.present_items.size > 0) {
+    randomDelay(2000)
+    saveRuleDescription(ids = listOf(20))!! // TODO: necessary?
+    randomDelay(5000)
+    val presentResponse =
+      receivePresent(ids = presents.present_items.map { it.id })!!
+    sqlSetStars(presentResponse.user_model_diff.user_status.free_sns_coin)
+    randomDelay(9000)
+    fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+  }
+  sqlTouchLastLogin()
 }
 
 // ------------------------------------------------------------------------
@@ -2419,8 +2444,12 @@ fun sqlNewAccount() {
 }
 
 fun sqlIncreaseAuthCount() {
+  sqlUpdateById("set authCount = authCount + 1")
+}
+
+fun sqlTouchLastLogin() {
   val time = System.currentTimeMillis()
-  sqlUpdateById("set authCount = authCount + 1, lastLogin = $time")
+  sqlUpdateById("set lastLogin = $time")
 }
 
 fun sqlAuthCount(): Int? = sqlQueryIntById("authCount")
@@ -2438,15 +2467,17 @@ fun sqlSetStatus(status: SqlAccountStatus) {
 fun sqlSetStars(stars: Int) = sqlUpdateById("set stars = $stars")
 
 fun sqlSetDeviceName(value: String) =
-  sqlUpdateById("set deviceName = $value")
+  sqlUpdateById("set deviceName = '$value'")
 
-fun sqlSetServiceUserCommonKey(value: String) =
-  sqlUpdateById("set serviceUserCommonKey  = $value")
+fun sqlSetServiceUserCommonKey(value: ByteArray) {
+  sqlUpdateById("set serviceUserCommonKey = '${value.toBase64()}'")
+}
 
 fun sqlGetDeviceName(): String? = sqlQueryStringById("deviceName")
+fun sqlGetDeviceToken(): String? = sqlQueryStringById("deviceToken")
 
-fun sqlGetServiceUserCommonKey(): String? =
-  sqlQueryStringById("serviceUserCommonKey")
+fun sqlGetServiceUserCommonKey(): ByteArray? =
+  sqlQueryStringById("serviceUserCommonKey")?.fromBase64()
 
 enum class SqlAccountStatus(val value: Int) {
   Startup(1),
@@ -2480,7 +2511,6 @@ enum class SqlAccountStatus(val value: Int) {
     fun fromInt(type: Int) = map[type]
   }
 }
-
 } // AllStarsClient
 
 // ------------------------------------------------------------------------
@@ -2516,11 +2546,53 @@ fun generateName(): String {
 fun generateNickname(): String = randomLine("names.txt")!!.limitLen(10)
 fun generateDeviceName(): String = randomLine("devices.txt")!!
 
-fun main(args: Array<String>) {
-  val llas = AllStarsClient(
-    name = generateName(),
-    nickname = generateNickname(),
-    deviceName = generateDeviceName()
-  )
-  llas.makeAccount()
+fun generateServiceId(): String {
+  return "g" + List(21) { "0123456789".random() }.joinToString("")
+  // I think this is the format for the android games hub or whatever
+  // return "a_" + List(20) { "0123456789".random() }.joinToString("")
 }
+
+fun getPushNotificationToken(): String {
+  // TODO: implement firebase messaging in kotlin
+  println("waiting for token-generator...")
+  val request = Request.Builder().url("http://127.0.0.1:6969").build()
+  return httpClient.newCall(request).execute().body()!!.string()
+}
+
+class Create : CliktCommand(help = "Create account") {
+  override fun run() {
+    val llas = AllStarsClient(
+      name = generateName(),
+      nickname = generateNickname(),
+      deviceName = generateDeviceName(),
+      deviceToken = getPushNotificationToken(),
+      serviceId = generateServiceId()
+    )
+    llas.makeAccount()
+  }
+}
+
+class Gifts : CliktCommand(
+  help = "Log in stale accounts and get gifts"
+) {
+  override fun run() {
+    while (true) {
+      // we specify a device name to set if the account doesn't have one
+      val llas = AllStarsClient(deviceName = generateDeviceName())
+      llas.getStaleAccount(hoursAgo = 24)?.let {
+        llas.loginAndGetGifts()
+      } ?: run {
+        println("no accounts that need to be logged in at the moment")
+        Thread.sleep(600000)
+      }
+    }
+  }
+}
+
+class Todokete : CliktCommand() {
+  override fun run() = Unit
+}
+
+fun main(args: Array<String>) = Todokete()
+  .subcommands(Create(), Gifts())
+  .main(args)

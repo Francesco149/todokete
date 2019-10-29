@@ -87,10 +87,10 @@ cd ~/todokete
   significantly as the client takes shape
 - [x] keep track of account tutorial status in case of failed requests,
   crashes, disconnects, etc
-- [ ] resume accounts with incomplete tutorial
-- [ ] log in existing accounts
+- [x] resume accounts with incomplete tutorial (not extensively tested)
+- [x] log in existing accounts
 - [ ] configurable endpoint and other version/region tied things
-- [ ] multithread support
+- [x] multithread support (theoretically works but not tested)
 - [ ] store full request logs for each account
 - [ ] a way to view and filter all logs combined
 - [ ] proxy support
