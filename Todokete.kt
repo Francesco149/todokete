@@ -2054,25 +2054,34 @@ public fun makeAccount() {
 // then sets up the client to log it in. returns serviceId
 public fun getStaleAccount(hoursAgo: Long = 24): String? {
   val old = System.currentTimeMillis() - 3600000.toLong() * hoursAgo
-  val rowSet = sqlQuery(
-    "select serviceId from accounts where lastLogin < $old"
-  )
+  val rowSet = sqlQuery("""
+  select id, serviceId from accounts
+  where lastLogin < $old
+  """)
   if (rowSet.next()) {
     serviceId = rowSet.getString("serviceId")
+    userId = rowSet.getInt("id")
     return serviceId
   }
   return null
 }
 
 // picks a random account that hasn't fully completed the tutorial
-// then sets up the client to log it in. returns serviceId
+// and hasn't been touched in >1h, then sets up the client to log it in.
+// returns serviceId
 public fun getIncompleteAccount(): String? {
+  // crappy way to avoid conflicting with parallel account creation.
+  // assuming it never gets stuck for >1h
+  // TODO: more reliable way to avoid competition between create/login
+  val old = System.currentTimeMillis() - 3600000.toLong()
   val rowSet = sqlQuery("""
-  select serviceId from accounts
+  select id, serviceId from accounts
   where status < ${SqlAccountStatus.LinkGameService.value}
+  and lastLogin < $old
   """)
   if (rowSet.next()) {
     serviceId = rowSet.getString("serviceId")
+    userId = rowSet.getInt("id")
     return serviceId
   }
   return null
@@ -2085,6 +2094,7 @@ public fun loginAndCompleteTutorial() {
     // otherwise, just use the stored one
     sqlGetServiceUserCommonKey()?.let { sessionKey = it }
     ?: run {
+      userId = 0 // workaround to avoid u= in this request
       val fetchResponse = fetchGameServiceDataBeforeLogin()!!
       val data = fetchResponse.data!!.linked_data
       sessionKey = data.service_user_common_key
@@ -2370,8 +2380,22 @@ fun createInfoTable() {
     stringValue text
   )
   """)
-  sqlUpdate("insert into todokete_info(key, intValue) " +
-    "values('version', 1)")
+}
+
+fun createAccountsTable() {
+  sqlUpdate("""
+  create table if not exists accounts(
+    id integer primary key,
+    serviceId char[22] not null,
+    authCount integer not null,
+    stars integer,
+    lastLogin integer not null,
+    status integer not null,
+    deviceToken char[154],
+    deviceName text,
+    serviceUserCommonKey char[44]
+  )
+  """)
 }
 
 init {
@@ -2379,26 +2403,27 @@ init {
 
   if (!tableExists("accounts")) {
     println("[db] initializing database")
-    sqlUpdate("""
-    create table if not exists accounts(
-      id integer primary key,
-      serviceId char[22] not null,
-      authCount integer not null,
-      stars integer,
-      lastLogin integer,
-      status integer not null,
-      deviceToken char[154],
-      deviceName text,
-      serviceUserCommonKey char[44]
-    )
-    """)
+    createAccountsTable()
     createInfoTable()
+    sqlSetVersion(2)
     println("[db] done")
   } else if (!tableExists("todokete_info")) {
     println("[db] migrating to db version 1")
     createInfoTable()
     sqlUpdate("alter table accounts add deviceName text")
     sqlUpdate("alter table accounts add serviceUserCommonKey char[44]")
+    sqlSetVersion(1)
+    println("[db] done")
+  }
+
+  if (sqlVersion()!! < 2) {
+    println("[db] migrating to db version 2")
+    sqlUpdate("delete from accounts where lastLogin is null")
+    sqlUpdate("alter table accounts rename to accounts_old")
+    createAccountsTable()
+    sqlUpdate("insert into accounts select * from accounts_old")
+    sqlUpdate("drop table accounts_old")
+    sqlSetVersion(2)
     println("[db] done")
   }
 
@@ -2410,6 +2435,19 @@ init {
   and serviceUserCommonKey is null
   """)
 }
+
+fun sqlVersion(): Int? {
+  val rowSet = sqlQuery(
+    "select intValue from todokete_info where key = 'version'"
+  )
+  if (rowSet.next()) {
+    return rowSet.getInt("intValue")
+  }
+  return null
+}
+
+fun sqlSetVersion(x: Int) =
+  sqlUpdate("update todokete_info set intValue = $x where key = 'version'")
 
 fun sqlUpdate(sql: String) {
   while (true) {
@@ -2457,12 +2495,14 @@ fun sqlQueryStringById(field: String): String? {
 }
 
 fun sqlNewAccount() {
+  val time = System.currentTimeMillis()
   val startup = SqlAccountStatus.Startup.value
   sqlUpdate("""
   insert into
-    accounts(id, serviceId, status, authCount, deviceToken, deviceName)
+    accounts(id, serviceId, status, authCount, deviceToken, deviceName,
+      lastLogin)
     values($userId, '$serviceId', $startup, 1, '$deviceToken',
-      '$deviceName')
+      '$deviceName', $time)
   """)
 }
 
