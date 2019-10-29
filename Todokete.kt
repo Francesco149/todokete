@@ -2330,6 +2330,8 @@ fun createInfoTable() {
     stringValue text
   )
   """)
+  sqlUpdate("insert into todokete_info(key, intValue) " +
+    "values('version', 1)")
 }
 
 init {
@@ -2355,8 +2357,6 @@ init {
   } else if (!tableExists("todokete_info")) {
     println("[db] migrating to db version 1")
     createInfoTable()
-    sqlUpdate("insert into todokete_info(key, intValue) " +
-      "values('version', 1)")
     sqlUpdate("alter table accounts add deviceName text")
     sqlUpdate("alter table accounts add serviceUserCommonKey char[44]")
     println("[db] done")
