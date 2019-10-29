@@ -44,28 +44,43 @@ dep https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-reflect/1.3.11/ko
 dep https://repo1.maven.org/maven2/org/slf4j/slf4j-simple/1.6.1/slf4j-simple-1.6.1.jar 14c6e9bdff71af1fb7054f9326159cea8bb5c1eb238159179ca911149c138e1d
 dep https://repo1.maven.org/maven2/org/slf4j/slf4j-api/1.7.25/slf4j-api-1.7.25.jar 18c4a0095d5c1da6b817592e767bb23d29dd2f560ad74df75ff3961dbde25b79
 dep https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.28.0/sqlite-jdbc-3.28.0.jar 93784e56dbf54625e06c992cf83f70e9c1bddd5c6ad1d3f01308c87b1d961b60
+dep https://repo1.maven.org/maven2/com/github/ajalt/clikt/2.2.0/clikt-2.2.0.jar beb3136d06764ec8ce0810a8fd6c8b7b49d04287d1deef3a07c016e43a458d33
 
 compile() {
   echo
   echo "# compiling"
-  kotlinc "$1.kt" -cp "$classpath" -include-runtime \
+  if [ -f "${1}.jar" ]; then
+    sha1sum "${1}.kt" > "${1}.newsums.log"
+    sha1sum "${1}.jar" >> "${1}.newsums.log"
+  fi
+  touch "${1}.sums.log"
+  cmp -s "${1}.newsums.log" "${1}.sums.log" ||
+    kotlinc "$1.kt" -cp "$classpath" -include-runtime \
     -Xuse-experimental=kotlin.ExperimentalUnsignedTypes \
     -d "${1}.jar" || exit
+  sha1sum "${1}.kt" > "${1}.sums.log"
+  sha1sum "${1}.jar" >> "${1}.sums.log"
 }
 
 run() {
   echo
   echo "# running"
-  java -cp "${classpath}${classpath_separator}${1}.jar" "${1}Kt"
+  tmpjar=$(mktemp /tmp/XXXXXX.jar)
+  cp "${1}.jar" "$tmpjar"
+  name="$1"
+  shift
+  params="${@:-create}"
+  cp="${classpath}${classpath_separator}${tmpjar}"
+  java -cp "$cp" "${name}Kt" $params
   while ${LOOP:-false}; do
-    java -cp "${classpath}${classpath_separator}${1}.jar" "${1}Kt"
+    java -cp "$cp" "${name}Kt" $params
   done
 }
 
 compile_and_run() {
   compile "$1"
-  run "$1"
+  run "$@"
 }
 
 cd "$wdir"
-compile_and_run Todokete
+compile_and_run Todokete "$@"
