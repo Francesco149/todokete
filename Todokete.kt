@@ -113,6 +113,7 @@ class JsonMapAdapterFactory : TypeAdapterFactory {
     val tv = (t.getType() as ParameterizedType).getActualTypeArguments()[1]
     val keyAdapter = gson.getAdapter(TypeToken.get(tk))
     val valueAdapter = gson.getAdapter(TypeToken.get(tv))
+    @Suppress("UNCHECKED_CAST")
     return Adapter(keyAdapter, valueAdapter) as TypeAdapter<T>
   }
 
@@ -2065,12 +2066,10 @@ public fun loginAndCompleteTutorial() {
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
   sessionKey = loginSessionKey.xor(randomBytes)
   randomDelay(9000)
-  while (sqlStatus()!! < SqlAccountStatus.LinkGameService) {
-    tutorialStep()
-  }
+  while (tutorialStep());
 }
 
-fun tutorialStep() {
+fun tutorialStep(): Boolean {
   val status = sqlStatus()!!
   when (status) {
     SqlAccountStatus.Startup -> {
@@ -2112,7 +2111,7 @@ fun tutorialStep() {
         sqlSetStatus(SqlAccountStatus.RuleDescription1)
         randomDelay(4000)
       }
-      var skipLiveResponse = skipLive(
+      skipLive(
         live = startLiveResponse.live,
         stamina = 6578, // TODO: calc these
         power = 1040,
@@ -2171,7 +2170,7 @@ fun tutorialStep() {
       randomDelay(8000)
     }
     SqlAccountStatus.LevelUpCard -> {
-      val activateTrainingTreeResponse = activateTrainingTreeCell(
+      activateTrainingTreeCell(
         cardMasterId = 100012001,
         cellMasterIds =
           listOf(17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
@@ -2266,7 +2265,9 @@ fun tutorialStep() {
       linkGameService()!!
       sqlSetStatus(SqlAccountStatus.LinkGameService)
     }
+    SqlAccountStatus.LinkGameService -> return false
   }
+  return true
 }
 
 // login, complete tutorial if incomplete and get gifts
@@ -2310,31 +2311,49 @@ public fun loginAndGetGifts() {
 
 // ------------------------------------------------------------------------
 
-val sqlStatement: Statement by lazy {
-  var stmt: Statement? = null
-  while (stmt == null) {
-    try {
-      stmt = DriverManager
-        .getConnection("jdbc:sqlite:todokete.db")
-        .createStatement()
-      stmt.setQueryTimeout(30)
-      stmt.executeUpdate("""
-      create table if not exists accounts(
-        id integer primary key,
-        serviceId char[22] not null,
-        authCount integer not null,
-        stars integer,
-        lastLogin integer,
-        status integer not null,
-        deviceToken char[154]
-      )
-      """)
-    } catch (e: SQLException) {
-      println("sqlite error: $e")
-      Thread.sleep(1000)
-    }
+val sqlStatement = DriverManager
+  .getConnection(jdbcPath)
+  .createStatement()
+
+fun tableExists(name: String): Boolean =
+  sqlQuery("""
+    select name
+    from sqlite_master
+    where type='table' and name='$name'
+  """).next()
+
+init {
+  sqlStatement.setQueryTimeout(30)
+
+  if (!tableExists("accounts")) {
+    sqlUpdate("""
+    create table if not exists accounts(
+      id integer primary key,
+      serviceId char[22] not null,
+      authCount integer not null,
+      stars integer,
+      lastLogin integer,
+      status integer not null,
+      deviceToken char[154],
+      deviceName text,
+      serviceUserCommonKey char[44]
+    )
+    """)
+  } else if (!tableExists("todokete_info")) {
+    println("[db] migrating to db version 1")
+    sqlUpdate("""
+    create table todokete_info(
+      key text primary key,
+      intValue integer,
+      stringValue text
+    )
+    """)
+    sqlUpdate("insert into todokete_info(key, intValue) " +
+      "values('version', 1)")
+    sqlUpdate("alter table accounts add deviceName text")
+    sqlUpdate("alter table accounts add serviceUserCommonKey char[44]")
+    println("[db] done")
   }
-  stmt!!
 }
 
 fun sqlUpdate(sql: String) {
@@ -2374,11 +2393,22 @@ fun sqlQueryIntById(field: String): Int? {
   return null
 }
 
+fun sqlQueryStringById(field: String): String? {
+  val rowSet = sqlQueryById(field)
+  if (rowSet.next()) {
+    return rowSet.getString(field)
+  }
+  return null
+}
+
 fun sqlNewAccount() {
   val startup = SqlAccountStatus.Startup.value
-  sqlUpdate("insert into " +
-    "accounts(id, serviceId, status, authCount, deviceToken) " +
-    "values($userId, '$serviceId', $startup, 1, '$deviceToken')")
+  sqlUpdate("""
+  insert into
+    accounts(id, serviceId, status, authCount, deviceToken, deviceName)
+    values($userId, '$serviceId', $startup, 1, '$deviceToken',
+      '$deviceName')
+  """)
 }
 
 fun sqlIncreaseAuthCount() {
@@ -2400,8 +2430,16 @@ fun sqlSetStatus(status: SqlAccountStatus) {
 
 fun sqlSetStars(stars: Int) = sqlUpdateById("set stars = $stars")
 
-fun sqlSetDeviceToken(token: String) =
-  sqlUpdateById("set device_token = $token")
+fun sqlSetDeviceName(value: String) =
+  sqlUpdateById("set deviceName = $value")
+
+fun sqlSetServiceUserCommonKey(value: String) =
+  sqlUpdateById("set serviceUserCommonKey  = $value")
+
+fun sqlGetDeviceName(): String? = sqlQueryStringById("deviceName")
+
+fun sqlGetServiceUserCommonKey(): String? =
+  sqlQueryStringById("serviceUserCommonKey")
 
 enum class SqlAccountStatus(val value: Int) {
   Startup(1),
