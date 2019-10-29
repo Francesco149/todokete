@@ -2322,10 +2322,21 @@ fun tableExists(name: String): Boolean =
     where type='table' and name='$name'
   """).next()
 
+fun createInfoTable() {
+  sqlUpdate("""
+  create table todokete_info(
+    key text primary key,
+    intValue integer,
+    stringValue text
+  )
+  """)
+}
+
 init {
   sqlStatement.setQueryTimeout(30)
 
   if (!tableExists("accounts")) {
+    println("[db] initializing database")
     sqlUpdate("""
     create table if not exists accounts(
       id integer primary key,
@@ -2339,15 +2350,11 @@ init {
       serviceUserCommonKey char[44]
     )
     """)
+    createInfoTable()
+    println("[db] done")
   } else if (!tableExists("todokete_info")) {
     println("[db] migrating to db version 1")
-    sqlUpdate("""
-    create table todokete_info(
-      key text primary key,
-      intValue integer,
-      stringValue text
-    )
-    """)
+    createInfoTable()
     sqlUpdate("insert into todokete_info(key, intValue) " +
       "values('version', 1)")
     sqlUpdate("alter table accounts add deviceName text")
