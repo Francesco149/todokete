@@ -2046,7 +2046,7 @@ fun receivePresent(ids: List<Int>): ReceivePresentResponse? {
 
 // creates a new account, completes tutorial, gets gifts
 public fun makeAccount() {
-  val fetchBeforeLoginResponse = fetchGameServiceDataBeforeLogin()!!
+  fetchGameServiceDataBeforeLogin()!!
   randomDelay(1000)
   val startupResponse = startup()!!
   sqlNewAccount()
