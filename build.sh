@@ -56,9 +56,9 @@ compile() {
 run() {
   echo
   echo "# running"
-  java -cp "${classpath}${classpath_separator}${1}.jar" "${1}Kt" || exit
+  java -cp "${classpath}${classpath_separator}${1}.jar" "${1}Kt"
   while ${LOOP:-false}; do
-    java -cp "${classpath}${classpath_separator}${1}.jar" "${1}Kt" || exit
+    java -cp "${classpath}${classpath_separator}${1}.jar" "${1}Kt"
   done
 }
 
