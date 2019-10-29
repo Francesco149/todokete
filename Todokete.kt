@@ -2063,6 +2063,20 @@ public fun getStaleAccount(hoursAgo: Long = 24): String? {
   return null
 }
 
+// picks a random account that hasn't fully completed the tutorial
+// then sets up the client to log it in. returns serviceId
+public fun getIncompleteAccount(): String? {
+  val rowSet = sqlQuery("""
+  select serviceId from accounts
+  where status < ${SqlAccountStatus.LinkGameService.value}
+  """)
+  if (rowSet.next()) {
+    serviceId = rowSet.getString("serviceId")
+    return serviceId
+  }
+  return null
+}
+
 public fun loginAndCompleteTutorial() {
   // if we get here from makeAccount, sessionKey is set and we dont do this
   if (sessionKey.contentEquals(startupKey.toByteArray())) {
@@ -2573,13 +2587,16 @@ class Create : CliktCommand(help = "Create account") {
 }
 
 class Gifts : CliktCommand(
-  help = "Log in stale accounts and get gifts"
+  help = "Log in accounts that haven't been logged in 24+h or that " +
+    "haven't completed the tutorial and get gifts"
 ) {
   override fun run() {
     while (true) {
       // we specify a device name to set if the account doesn't have one
       val llas = AllStarsClient(deviceName = generateDeviceName())
-      llas.getStaleAccount(hoursAgo = 24)?.let {
+      llas.getStaleAccount()?.let {
+        llas.loginAndGetGifts()
+      } ?: llas.getIncompleteAccount()?.let {
         llas.loginAndGetGifts()
       } ?: run {
         println("no accounts that need to be logged in at the moment")
