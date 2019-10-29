@@ -2072,10 +2072,10 @@ public fun loginAndCompleteTutorial() {
     ?: run {
       val fetchResponse = fetchGameServiceDataBeforeLogin()!!
       val data = fetchResponse.data!!.linked_data
-      sqlSetServiceUserCommonKey(data.service_user_common_key)
       sessionKey = data.service_user_common_key
       // load other account data from db
       userId = data.user_id
+      sqlSetServiceUserCommonKey(data.service_user_common_key)
       sqlGetDeviceName()?.let { deviceName = it }
       ?: run { sqlSetDeviceName(deviceName) }
       deviceToken = sqlGetDeviceToken()!!
