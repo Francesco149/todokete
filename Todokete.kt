@@ -42,284 +42,70 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 
-const val ServerEndpoint =
-  "https://jp-real-prod-v4tadlicuqeeumke.api.game25.klabgames.net/ep1010"
-const val StartupKey = "G5OdK4KdQO5UM2nL"
-const val RSAPublicKey = """-----BEGIN PUBLIC KEY-----
-MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC/ZUSWq8LCuF2JclEp6uuW9+yddLQvb2420+F8
-rxIF8+W53BiF8g9m6nCETdRw7RVnzNABevMndCCTD6oQ6a2w0QpoKeT26578UCWtGp74NGg2Q2fH
-YFMAhTytVk48qO4ViCN3snFs0AURU06niM98MIcEUnj9vj6kOBlOGv4JWQIDAQAB
------END PUBLIC KEY-----"""
-const val PackageName = "com.klab.lovelive.allstars"
+// internal globals
+// no thread-unsafe stuff here
 
-// md5, sha1, sha256 of the package's signature
-// obtained by running https://github.com/warren-bank/print-apk-signature
-// on the split apk
-val PackageSignatures = arrayOf(
-  "3f45f90cbcc718e4b63462baeae90c86",
-  "1be2103a6929b38798a29d89044892f3b3934184",
-  "1d32dbcf91697d46594ad689d49bb137f65d4bb8f56a26724ae7008648131b82"
-)
-
-// md5, sha1, sha256 of libjackpot-core.so
-val JackpotSignatures = arrayOf(
-  "81ec95e20a695c600375e3b8349722ab",
-  "5a3cb86aa9b082d6a1c1dfa6f73dd431d7f14e18",
-  "66370b8c96de7266b02bfe17e696d8a61b587656a34b19fbb0b2768a5305dd1d"
-).map { it.hexStringToByteArray() }
-
-// md5, sha1, sha256 of libil2cpp.so
-val Il2CppSignatures = arrayOf(
-  "67f969e32c2d775b35e2f2ad10b423c1",
-  "c4387c429c50c4782ab3df409db3abcfa8fadf79",
-  "d30568d1057fecb31a16f4062239c1ec65b9c2beab41b836658b637dcb5a51e4"
-).map { it.hexStringToByteArray() }
-
-// ------------------------------------------------------------------------
-
-fun ByteArray.toHexString() = joinToString("") { "%02x".format(it) }
-
-fun ByteArray.xor(other: ByteArray) =
-  (zip(other) { a, b -> (a.toInt() xor b.toInt()).toByte() }).toByteArray()
-
-fun String.hexStringToByteArray() =
-  chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-
-val kf = KeyFactory.getInstance("RSA")
-val keyBytes = Base64.getDecoder().decode(
-  RSAPublicKey
-    .replace("-----BEGIN PUBLIC KEY-----", "")
-    .replace("-----END PUBLIC KEY-----", "")
-    .replace("\\s+".toRegex(), "")
-)
-val keySpecX509 = X509EncodedKeySpec(keyBytes)
-val pubKey = kf.generatePublic(keySpecX509)
+// "Instances of Base64.Encoder class are safe for use by multiple
+// concurrent threads"
+// "Instances of Base64.Decoder class are safe for use by multiple
+// concurrent threads"
+// https://docs.oracle.com/javase/8/docs/api/java/util/Base64.Encoder.html
+// https://docs.oracle.com/javase/8/docs/api/java/util/Base64.Decoder.html
 
 val base64Encoder = Base64.getEncoder()
 val base64Decoder = Base64.getDecoder()
 
-fun md5(str: String): String {
-  val digest = MessageDigest.getInstance("MD5")
-  digest.reset()
-  digest.update(str.toByteArray())
-  val hash = digest.digest()
-  return BigInteger(1, hash).toString(16).padStart(32, '0')
-}
+// as far as I know, OkHttpClient is thread safe
+val httpClient = OkHttpClient()
 
-fun publicEncrypt(data: ByteArray): ByteArray {
-  val cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding")
-  cipher.init(Cipher.ENCRYPT_MODE, pubKey)
-  return cipher.doFinal(data)
-}
-
-fun hmacSha1(key: ByteArray, data: ByteArray): String {
-  val hmacKey = SecretKeySpec(key, "HmacSHA1")
-  val hmac = Mac.getInstance("HmacSHA1")
-  hmac.init(hmacKey)
-  return hmac.doFinal(data).toHexString()
-}
-
-// ------------------------------------------------------------------------
-
-val sqlStatement: Statement by lazy {
-  var stmt: Statement? = null
-  while (stmt == null) {
-    try {
-      stmt = DriverManager
-        .getConnection("jdbc:sqlite:todokete.db")
-        .createStatement()
-      stmt.setQueryTimeout(30)
-      stmt.executeUpdate("""
-      create table if not exists accounts(
-        id integer primary key,
-        serviceId char[22] not null,
-        authCount integer not null,
-        stars integer,
-        lastLogin integer,
-        status integer not null,
-        deviceToken char[154]
-      )
-      """)
-    } catch (e: SQLException) {
-      println("sqlite error: $e")
-      Thread.sleep(1000)
-    }
-  }
-  stmt!!
-}
-
-fun sqlUpdate(sql: String) {
-  while (true) {
-    try {
-      sqlStatement.executeUpdate(sql)
-      return
-    } catch (e: SQLException) {
-      println("sqlite error: $e")
-      Thread.sleep(1000)
-    }
-  }
-}
-
-fun sqlUpdateById(sql: String) =
-  sqlUpdate("update accounts $sql where id = $userId")
-
-fun sqlQuery(sql: String): ResultSet {
-  while (true) {
-    try {
-      return sqlStatement.executeQuery(sql)
-    } catch (e: SQLException) {
-      println("sqlite error: $e")
-      Thread.sleep(1000)
-    }
-  }
-}
-
-fun sqlQueryById(sql: String = "*") =
-  sqlQuery("select $sql from accounts where id = $userId")
-
-fun sqlQueryIntById(field: String): Int? {
-  val rowSet = sqlQueryById(field)
-  if (rowSet.next()) {
-    return rowSet.getInt(field)
-  }
-  return null
-}
-
-fun sqlNewAccount() {
-  val startup = SqlAccountStatus.Startup.value
-  sqlUpdate("insert into " +
-    "accounts(id, serviceId, status, authCount, deviceToken) " +
-    "values($userId, '$serviceId', $startup, 1, '$deviceToken')")
-}
-
-fun sqlIncreaseAuthCount() {
-  val time = System.currentTimeMillis()
-  sqlUpdateById("set authCount = authCount + 1, lastLogin = $time")
-}
-
-fun sqlAuthCount(): Int? = sqlQueryIntById("authCount")
-
-fun sqlStatus(): SqlAccountStatus? {
-  sqlQueryIntById("status")?.let { return SqlAccountStatus.fromInt(it) }
-  return null
-}
-
-fun sqlSetStatus(status: SqlAccountStatus) {
-  val value = status.value
-  sqlUpdateById("set status = $value")
-}
-
-fun sqlSetStars(stars: Int) = sqlUpdateById("set stars = $stars")
-fun sqlSetDeviceToken(token: String) =
-  sqlUpdateById("set device_token = $token")
-
-enum class SqlAccountStatus(val value: Int) {
-  Startup(1),
-  TermsAgreement(2),
-  SetName(3),
-  SetNickName(4),
-  SetBirthDay(5),
-  Story1001(6),
-  RuleDescription1(7),
-  Live30001301(8),
-  Story1003(9),
-  RuleDescription2(10),
-  Live31007301(11),
-  SetFavoriteMember(12),
-  TapLovePoint(13),
-  NaviVoice100010004(14),
-  LevelUpCard(15),
-  Training(16),
-  StorySide(17),
-  NewFlag(18),
-  SaveLiveDeck(19),
-  SaveSuit(20),
-  Live31001101(21),
-  DrawGacha(22),
-  TutorialEnd(23),
-  LinkGameService(24);
-
-  companion object {
-    private val map = SqlAccountStatus.values()
-      .associateBy(SqlAccountStatus::value)
-    fun fromInt(type: Int) = map[type]
-  }
-}
-
-// ------------------------------------------------------------------------
-
-var requestId = 0 // incremented after every successful request
-var sessionKey = StartupKey.toByteArray()
-var randomBytes = Random.nextBytes(32) // regenerated on login/startup
-var userId = 0 // obtained after startup, or known before login
-var serviceId = generateServiceId() // known or generated on acc creation
-var flags = 0
-var masterVersion: String? = null // obtained after the first request
-var lastRequestTime: Long = 0
-var userModel: UserModel? = null // TODO: keep this properly updated
-val deviceName = randomDeviceName()
-val deviceToken = getPushNotificationToken()
-
-// flags
-const val WithMasterVersion = 1 shl 1
-const val WithTime = 1 shl 2
-const val PrintHeaders = 1 shl 3
-
-fun call(path: String, payload: String): String {
-  lastRequestTime = System.currentTimeMillis()
-  requestId += 1
-  var pathWithQuery = path + "?p=a"
-  if ((flags and WithMasterVersion) != 0) {
-    pathWithQuery += "&mv=" + masterVersion!!
-  }
-  pathWithQuery += "&id=$requestId"
-  if (userId != 0) {
-    pathWithQuery += "&u=$userId"
-  }
-  if ((flags and WithTime) != 0) {
-    pathWithQuery += "&t=$lastRequestTime"
-  }
-  println("-> POST $pathWithQuery")
-  val hashData = pathWithQuery + " " + payload
-  val hash = hmacSha1(sessionKey, hashData.toByteArray())
-  val json = """[$payload,"$hash"]"""
-  println("-> $json")
-  val JSON = MediaType.parse("application/json")
-  val client = OkHttpClient()
-  val request = Request.Builder()
-    .url("$ServerEndpoint$pathWithQuery")
-    .post(RequestBody.create(JSON, json.toByteArray()))
-    .build()
-  val response = client.newCall(request).execute()
-  if (!response.isSuccessful) {
-    println("unexpected code $response")
-  }
-  if ((flags and PrintHeaders) != 0) {
-    val headers = response.headers()
-    for (i in 0..headers.size() - 1) {
-      val name = headers.name(i)
-      val value = headers.value(i)
-      println("$name: $value")
-    }
-  }
-  val s = response.body()!!.string()
-  prettyPrint(s)
-  return s
-}
-
-// ------------------------------------------------------------------------
-
+// gson instances are thread safe as far as I know. should be fine to keep
+// this global
 val gson = GsonBuilder()
   .registerTypeAdapterFactory(JsonMapAdapterFactory())
   .create()
 
+// ------------------------------------------------------------------------
+// misc stateless utils and classes
+
+fun randomDelay(ms: Int) =
+  Thread.sleep((ms + (-ms / 5..ms / 5).random()).toLong())
+
+fun ByteArray.toHexString() = joinToString("") { "%02x".format(it) }
+
+// xors two ByteArrays together. result is truncated to shortest array
+fun ByteArray.xor(other: ByteArray) =
+  (zip(other) { a, b -> (a.toInt() xor b.toInt()).toByte() }).toByteArray()
+
+// "aabbccdd" -> arrayOf(0xaa, 0xbb, 0xcc, 0xdd)
+fun String.hexStringToByteArray() =
+  chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+fun generateServiceId(): String {
+  return "g" + List(21) { "0123456789".random() }.joinToString("")
+  // I think this is the format for the android games hub or whatever
+  // return "a_" + List(20) { "0123456789".random() }.joinToString("")
+}
+
+// pretty print json from json string
+fun prettyPrint(result: String) {
+  val pp = GsonBuilder().setPrettyPrinting().create()
+  val array = JsonParser.parseString(result).getAsJsonArray()
+  println(pp.toJson(array))
+}
+
+fun getPushNotificationToken(): String {
+  // TODO: implement firebase messaging in kotlin
+  println("waiting for token-generator...")
+  val request = Request.Builder().url("http://127.0.0.1:6969").build()
+  return httpClient.newCall(request).execute().body()!!.string()
+}
+
 // generics are a mistake that cause people to come up with useless
 // 200iq solutions to problems that don't exist
 
+// sifas json maps are laid out like so: [ key, value, key, value, ... ]
+// so we need to override the built in map type adapter
 class JsonMapAdapterFactory : TypeAdapterFactory {
-  // sifas json maps are laid out like so: [ key, value, key, value, ... ]
-  // so we need to override the built in map type adapter
-
   override fun <T> create(gson: Gson, t: TypeToken<T>): TypeAdapter<T>? {
     if (!Map::class.java.isAssignableFrom(t.getRawType())) { return null }
     if (t.getType() !is ParameterizedType) { return null }
@@ -377,11 +163,172 @@ class JsonMapAdapterFactory : TypeAdapterFactory {
   }
 }
 
-fun prettyPrint(result: String) {
-  val pp = GsonBuilder().setPrettyPrinting().create()
-  val array = JsonParser.parseString(result).getAsJsonArray()
-  println(pp.toJson(array))
+// ------------------------------------------------------------------------
+
+class AllStarsClient(
+  // first StringLiteral in  ServerConfig$$.cctor
+  val serverEndpoint: String =
+  "https://jp-real-prod-v4tadlicuqeeumke.api.game25.klabgames.net/ep1015",
+
+  // second StringLiteral in  ServerConfig$$.cctor
+  val startupKey: String = "5H61ESZxJwcsylnk",
+
+  // found in DMCryptography$$CreateRSAProvider . must be converted from
+  // xml to pem using a tool like
+  // https://gist.github.com/Francesco149/8c6288a853dd010a638892be2a2c48af
+  val rsaPublicKey: String = """-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC/ZUSWq8LCuF2JclEp6uuW9+yddLQvb2420+F8
+rxIF8+W53BiF8g9m6nCETdRw7RVnzNABevMndCCTD6oQ6a2w0QpoKeT26578UCWtGp74NGg2Q2fH
+YFMAhTytVk48qO4ViCN3snFs0AURU06niM98MIcEUnj9vj6kOBlOGv4JWQIDAQAB
+-----END PUBLIC KEY-----""",
+
+  val packageName: String = "com.klab.lovelive.allstars",
+
+  // md5, sha1, sha256 of the package's certificate in hexstring form
+  // obtained by running https://github.com/warren-bank/print-apk-signature
+  // on the split apk
+  val packageSignatures: List<String> = listOf(
+    "3f45f90cbcc718e4b63462baeae90c86",
+    "1be2103a6929b38798a29d89044892f3b3934184",
+    "1d32dbcf91697d46594ad689d49bb137f65d4bb8f56a26724ae7008648131b82"
+  ),
+
+  // md5, sha1, sha256 of libjackpot-core.so in binary form
+  val jackpotSignatures: List<ByteArray> = arrayOf(
+    "81ec95e20a695c600375e3b8349722ab",
+    "5a3cb86aa9b082d6a1c1dfa6f73dd431d7f14e18",
+    "66370b8c96de7266b02bfe17e696d8a61b587656a34b19fbb0b2768a5305dd1d"
+  ).map { it.hexStringToByteArray() },
+
+  // md5, sha1, sha256 of libil2cpp.so in binary form
+  val il2CppSignatures: List<ByteArray> = arrayOf(
+    "decfef54eea1292c1e49b7001dcd81fd",
+    "44d7392f3eb8031c0893be19cc22ca868eaab27c",
+    "d57294be9872932b74f4ca5653cdbc8b3fb137df3fa5c9bc86073337745323f4"
+  ).map { it.hexStringToByteArray() },
+
+  // this database will store account data and other stuff that needs
+  // to persist
+  val jdbcPath: String = "jdbc:sqlite:todokete.db",
+
+  // these only need to be set if you're making a new account
+  val deviceName: String = "",
+  val nickname: String = "",
+  val name: String = "",
+
+  val deviceToken: String = getPushNotificationToken(),
+  var userId: Int = 0, // obtained after startup, or known before login
+  var serviceId: String = generateServiceId() // known or generated
+) {
+
+// ------------------------------------------------------------------------
+// crypto and other internal utils
+
+val kf = KeyFactory.getInstance("RSA")
+val keyBytes = Base64.getDecoder().decode(
+  rsaPublicKey
+    .replace("-----BEGIN PUBLIC KEY-----", "")
+    .replace("-----END PUBLIC KEY-----", "")
+    .replace("\\s+".toRegex(), "")
+)
+val keySpecX509 = X509EncodedKeySpec(keyBytes)
+val pubKey = kf.generatePublic(keySpecX509)
+
+fun md5(str: String): String {
+  val digest = MessageDigest.getInstance("MD5")
+  digest.reset()
+  digest.update(str.toByteArray())
+  val hash = digest.digest()
+  return BigInteger(1, hash).toString(16).padStart(32, '0')
 }
+
+fun publicEncrypt(data: ByteArray): ByteArray {
+  val cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding")
+  cipher.init(Cipher.ENCRYPT_MODE, pubKey)
+  return cipher.doFinal(data)
+}
+
+fun hmacSha1(key: ByteArray, data: ByteArray): String {
+  val hmacKey = SecretKeySpec(key, "HmacSHA1")
+  val hmac = Mac.getInstance("HmacSHA1")
+  hmac.init(hmacKey)
+  return hmac.doFinal(data).toHexString()
+}
+
+// ------------------------------------------------------------------------
+// state
+
+var requestId = 0 // incremented after every successful request
+var sessionKey = startupKey.toByteArray()
+var randomBytes = Random.nextBytes(32) // regenerated on login/startup
+var flags = 0 // used in call()
+var masterVersion: String? = null // obtained after the first request
+var lastRequestTime: Long = 0
+var userModel: UserModel? = null // TODO: keep this properly updated
+
+// ------------------------------------------------------------------------
+// http client
+
+// used in flags
+val WithMasterVersion = 1 shl 1
+val WithTime = 1 shl 2
+val PrintHeaders = 1 shl 3
+
+fun call(path: String, payload: String): String {
+  lastRequestTime = System.currentTimeMillis()
+  requestId += 1
+  var pathWithQuery = path + "?p=a"
+  if ((flags and WithMasterVersion) != 0) {
+    pathWithQuery += "&mv=" + masterVersion!!
+  }
+  pathWithQuery += "&id=$requestId"
+  if (userId != 0) {
+    pathWithQuery += "&u=$userId"
+  }
+  if ((flags and WithTime) != 0) {
+    pathWithQuery += "&t=$lastRequestTime"
+  }
+  println("-> POST $pathWithQuery")
+  val hashData = pathWithQuery + " " + payload
+  val hash = hmacSha1(sessionKey, hashData.toByteArray())
+  val json = """[$payload,"$hash"]"""
+  println("-> $json")
+  val JSON = MediaType.parse("application/json")
+  val request = Request.Builder()
+    .url("$serverEndpoint$pathWithQuery")
+    .post(RequestBody.create(JSON, json.toByteArray()))
+    .build()
+  val response = httpClient.newCall(request).execute()
+  if (!response.isSuccessful) {
+    println("unexpected code $response")
+  }
+  if ((flags and PrintHeaders) != 0) {
+    val headers = response.headers()
+    for (i in 0..headers.size() - 1) {
+      val name = headers.name(i)
+      val value = headers.value(i)
+      println("$name: $value")
+    }
+  }
+  val s = response.body()!!.string()
+  prettyPrint(s)
+  return s
+}
+
+// TODO: handle mainteinance
+// example maint response
+// code = 503 service unavailable
+// json = {"message_ja":"「ラブライブ！スクールアイドルフェスティバル ALL
+// STARS」は\n現在メンテナンス中です。\nメンテナンス中はゲームをプレイする
+// ことはできません。\n\n【メンテナンス時間】\n<color value=\"#ffa800\">20
+// 19年10月29日 0:00 ~ 2019年10月29日 8:00予定</color>\n\n<color value=\"
+// #ffa800\">特訓のマスの調整と、その補填について準備を進めております。\n状
+// 況によってメンテナンス終了が前後する可能性もあります\n予めご了承ください
+// 。</color>\n\nお客様にはご不便をお掛けし誠に申し訳ありませんが、\n何卒
+// ご協力をお願いいたします。","url_ja":"https://lovelive-as.bushimo.jp/"}
+//
+// seems like it can also give 410 Gone where body is just "Gone". I think
+// this happens when klab moves to a new /epxxxx version
 
 inline fun <reified T> parseResponse(result: String): T? {
   // TODO: consider moving everything except gson call to call() for
@@ -400,10 +347,7 @@ inline fun <reified T> parseResponse(result: String): T? {
 }
 
 // ------------------------------------------------------------------------
-
-fun generateServiceId(): String {
-  return "g" + List(21) { "0123456789".random() }.joinToString("")
-}
+// api
 
 fun generateMask(): String {
   val bytes = publicEncrypt(Random.nextBytes(32))
@@ -413,7 +357,7 @@ fun generateMask(): String {
 data class FetchGameServiceDataBeforeLoginRequest(
   val user_id: Int,
   val service_id: String,
-  val mask: String = generateMask()
+  val mask: String
 )
 
 data class UserLinkData(
@@ -449,7 +393,8 @@ fun fetchGameServiceDataBeforeLogin(
     path = "/dataLink/fetchGameServiceDataBeforeLogin",
     payload = gson.toJson(FetchGameServiceDataBeforeLoginRequest(
       user_id = user_id,
-      service_id = serviceId
+      service_id = serviceId,
+      mask = generateMask()
     ))
   )
   return parseResponse(result)
@@ -468,7 +413,7 @@ data class StartupResponse(
 
 fun startup(): StartupResponse? {
   val advertisingId = UUID.randomUUID().toString()
-  val resemara = md5(advertisingId + PackageName)
+  val resemara = md5(advertisingId + packageName)
   randomBytes = Random.nextBytes(32)
   val maskBytes = publicEncrypt(randomBytes)
   val mask = base64Encoder.encodeToString(maskBytes)
@@ -934,15 +879,16 @@ data class LoginResponse(
   val live_resume: Map<String, LiveResume> // TODO; not sure
 )
 
-fun assetStateLogGenerateV2(randomBytes64: String): String {
+fun assetStateLogGenerateV2(): String {
+  val randomBytes64 = base64Encoder.encodeToString(randomBytes)
   val libHashChar = (randomBytes64[0].toInt() and 1) + 1
   val libHashType = randomBytes64[libHashChar].toInt().rem(3)
   val pkgHashChar = 2 - (randomBytes64[0].toInt() and 1)
   val pkgHashType = randomBytes64[pkgHashChar].toInt().rem(3)
   val xoredHashes =
-    JackpotSignatures[libHashType].xor(Il2CppSignatures[libHashType])
+    jackpotSignatures[libHashType].xor(il2CppSignatures[libHashType])
       .toHexString()
-  val packageSignature = PackageSignatures[pkgHashType]
+  val packageSignature = packageSignatures[pkgHashType]
   val signatures = when (randomBytes64[0].toInt() and 1) {
     0 -> "$xoredHashes-$packageSignature"
     1 -> "$packageSignature-$xoredHashes"
@@ -1003,22 +949,17 @@ fun assetStateLogGenerateV2(randomBytes64: String): String {
     .encodeToString(signatures.toByteArray().xor(xorBytes))
 }
 
-var authCount = 0
-
-fun login(id: Int): LoginResponse? {
-  userId = id
-  authCount += 1
+fun login(): LoginResponse? {
   randomBytes = Random.nextBytes(32)
-  val randomBytes64 = base64Encoder.encodeToString(randomBytes)
   val maskBytes = publicEncrypt(randomBytes)
   val mask = base64Encoder.encodeToString(maskBytes)
   val result = call(
     path = "/login/login",
     payload = gson.toJson(LoginRequest(
       user_id = userId,
-      auth_count = authCount,
+      auth_count = sqlAuthCount()!!,
       mask = mask,
-      asset_state = assetStateLogGenerateV2(randomBytes64)
+      asset_state = assetStateLogGenerateV2()
     ))
   )
   return parseResponse(result)
@@ -1043,46 +984,6 @@ data class SetUserProfileRequest(
   val message: String?,
   val device_token: String? // firebase push notification token
 )
-
-fun randomLine(file: String): String? {
-  var n = 0
-  File(file).forEachLine { n += 1 }
-  val line = Random.nextInt(0, n)
-  n = 0
-  File(file).useLines { lines ->
-    for (x in lines) {
-      n += 1
-      if (n == line) {
-        return x
-      }
-    }
-  }
-  return null
-}
-
-fun String.limitLen(len: Int): String =
-  if (length > len) slice(0..len - 1) else this
-
-fun generateName(): String {
-  val name = randomLine("names.txt")!!.limitLen(4).toLowerCase()
-  val place = randomLine("places.txt")!!.limitLen(4).toLowerCase()
-  return when (Random.nextInt(0, 2)) {
-    0 -> name + place
-    else -> name + place + Random.nextInt(0, 99).toString()
-  }
-}
-
-fun generateNickname(): String = randomLine("names.txt")!!.limitLen(10)
-
-const val DefaultMessage = "よろしくお願いします！"
-
-fun getPushNotificationToken(): String {
-  // TODO: implement firebase messaging in kotlin
-  println("waiting for token-generator...")
-  val client = OkHttpClient()
-  val request = Request.Builder().url("http://127.0.0.1:6969").build()
-  return client.newCall(request).execute().body()!!.string()
-}
 
 fun setUserProfile(
   name: String? = null,
@@ -1452,8 +1353,6 @@ fun setFavoriteMember(id: Int): UserModelResponse? {
   )
   return parseResponse(response)
 }
-
-fun randomDeviceName(): String = randomLine("devices.txt")!!
 
 data class FetchBootstrapRequest(
   val bootstrap_fetch_types: List<Int>,
@@ -1979,8 +1878,8 @@ fun tutorialPhaseEnd(): UserModelResponse? {
 }
 
 data class FetchGameServiceDataRequest(
-  val service_id: String = serviceId,
-  val mask: String = generateMask()
+  val service_id: String,
+  val mask: String
 )
 
 data class FetchGameServiceDataResponse(val data: UserLinkData)
@@ -1988,7 +1887,10 @@ data class FetchGameServiceDataResponse(val data: UserLinkData)
 fun fetchGameServiceData(): FetchGameServiceDataResponse? {
   val response = call(
     path = "/dataLink/fetchGameServiceData",
-    payload = gson.toJson(FetchGameServiceDataRequest())
+    payload = gson.toJson(FetchGameServiceDataRequest(
+      service_id = serviceId,
+      mask = generateMask()
+    ))
   )
   return parseResponse(response)
 }
@@ -2139,20 +2041,10 @@ fun receivePresent(ids: List<Int>): ReceivePresentResponse? {
 }
 
 // ------------------------------------------------------------------------
+// client
 
-fun testAssetState() {
-  val randomBytesBase64 = "CB7tjOEZK6IQJrX93O0BuTjM5txYFmFO8sv1Pq9eAcE="
-  val generated = assetStateLogGenerateV2(randomBytesBase64)
-  val expected = "D9NtY0n3oGxKjhaaJtABDcErt3xQ6kV5gjwD9kmKTG9SprprtHN7Yz" +
-    "8vUHfZpisWHG3lgU2Lh43ELGIOWIUKN3S3C8Bx3BVU0w=="
-  assert(generated == expected)
-}
-
-fun randomDelay(ms: Int) =
-  Thread.sleep((ms + (-ms / 5..ms / 5).random()).toLong())
-
-fun main(args: Array<String>) {
-  testAssetState()
+// creates a new account, completes tutorial, gets gifts
+public fun makeAccount() {
   val fetchBeforeLoginResponse = fetchGameServiceDataBeforeLogin()!!
   randomDelay(1000)
   val startupResponse = startup()!!
@@ -2160,163 +2052,228 @@ fun main(args: Array<String>) {
   val authKey = base64Decoder.decode(startupResponse.authorization_key)
   sessionKey = authKey.xor(randomBytes)
   randomDelay(2000)
-  val loginResponse = login(startupResponse.user_id)!!
+  loginAndGetGifts()
+}
+
+public fun loginAndCompleteTutorial() {
+  // TODO: handle previously created account, store session_key in database
+  // or get it from fetchBeforeLogin the first time
+  // TODO: sqlGetServiceUserCommonKey()?.let { ... }
+  val loginResponse = login()!!
   sqlIncreaseAuthCount()
   userModel = loginResponse.user_model // TODO: auto update this
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
   sessionKey = loginSessionKey.xor(randomBytes)
   randomDelay(9000)
-  var terms = userModel!!.user_status.terms_of_use_version
-  if (terms == 0) terms = 1 // TODO: is this how it works?
-  var userModelResponse = termsAgreement(terms)!!
-  sqlSetStatus(SqlAccountStatus.TermsAgreement)
-  randomDelay(9000)
-  userModelResponse = setUserProfile(name = generateName())!!
-  sqlSetStatus(SqlAccountStatus.SetName)
-  randomDelay(9000)
-  userModelResponse = setUserProfile(nickname = generateNickname())!!
-  sqlSetStatus(SqlAccountStatus.SetNickName)
-  randomDelay(4000)
-  userModelResponse = setUserProfileBirthDay()!!
-  sqlSetStatus(SqlAccountStatus.SetBirthDay)
-  randomDelay(10000)
-  var finishUserStoryMainResponse = finishUserStoryMain(cellId = 1001)!!
-  sqlSetStatus(SqlAccountStatus.Story1001)
-  randomDelay(1000)
-  var startLiveResponse = startLive(
-    liveDifficultyId = 30001301,
-    cellId = 1002,
-    deckId = 1
-  )!!
-  randomDelay(4000)
-  // TODO: is this always present? I don't see these rule description id's
-  // in my client's user model responses but they're present when playing
-  // from android x86
-  userModelResponse = saveRuleDescription(ids = listOf(1))!!
-  sqlSetStatus(SqlAccountStatus.RuleDescription1)
-  randomDelay(4000)
-  var skipLiveResponse = skipLive(
-    live = startLiveResponse.live,
-    stamina = 6578, // TODO: calc these
-    power = 1040,
-    targetScore = 35000
-  )!!
-  sqlSetStatus(SqlAccountStatus.Live30001301)
-  randomDelay(10000)
-  finishUserStoryMainResponse = finishUserStoryMain(cellId = 1003)!!
-  sqlSetStatus(SqlAccountStatus.Story1003)
-  startLiveResponse = startLive(
-    liveDifficultyId = 31007301,
-    cellId = 1004,
-    deckId = 2
-  )!!
-  randomDelay(4000)
-  userModelResponse = saveRuleDescription(ids = listOf(2))!!
-  sqlSetStatus(SqlAccountStatus.RuleDescription2)
-  randomDelay(4000)
-  skipLiveResponse = skipLive(
-    live = startLiveResponse.live,
-    stamina = 5812,
-    power = 1047,
-    targetScore = 40000
-  )!!
-  sqlSetStatus(SqlAccountStatus.Live31007301)
-  randomDelay(10000)
-  userModelResponse = setFavoriteMember(id = 1)!!
-  sqlSetStatus(SqlAccountStatus.SetFavoriteMember)
-  randomDelay(4000)
-  var bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
-  randomDelay(10000)
-  userModelResponse = tapLovePoint(memberMasterId = 1)!!
-  sqlSetStatus(SqlAccountStatus.TapLovePoint)
-  randomDelay(4000)
-  userModelResponse = saveUserNaviVoice(ids = listOf(100010004))!!
-  sqlSetStatus(SqlAccountStatus.NaviVoice100010004)
-  randomDelay(8000)
-  val trainingTreeResponse = fetchTrainingTree(cardMasterId = 100012001)!!
-  randomDelay(8000)
-  val levelUpCardResponse = levelUpCard(cardMasterId = 100012001)!!
-  sqlSetStatus(SqlAccountStatus.LevelUpCard)
-  randomDelay(8000)
-  val activateTrainingTreeResponse = activateTrainingTreeCell(
-    cardMasterId = 100012001,
-    cellMasterIds =
-      listOf(17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-  )!!
-  sqlSetStatus(SqlAccountStatus.Training)
-  randomDelay(30000)
-  val storySideResponse = finishUserStorySide(masterId = 1000120011)!!
-  sqlSetStatus(SqlAccountStatus.StorySide)
-  randomDelay(8000)
-  val updateCardResp = updateCardNewFlag(masterIds = listOf(100012001))!!
-  sqlSetStatus(SqlAccountStatus.NewFlag)
-  randomDelay(8000)
-  // TODO: do I need to hardcode this? is there any way to generate it?
-  // what does cardWithSuit mean? why do the squad id's start from 101?
-  userModelResponse = saveLiveDeckAll(
-    deckId = 1,
-    cardWithSuit = mapOf(
-      100012001 to null,
-      102071001 to null,
-      102081001 to null,
-      101031001 to null,
-      101061001 to null,
-      101051001 to null,
-      100051001 to null,
-      100051001 to null,
-      100091001 to 100091001,
-      100081001 to 100081001
-    ),
-    squad = mapOf(
-      101 to LiveSquad(listOf(100012001, 101061001, 101051001)),
-      102 to LiveSquad(listOf(102081001, 101031001, 100051001)),
-      103 to LiveSquad(listOf(102071001, 100091001, 100081001))
-    )
-  )!!
-  sqlSetStatus(SqlAccountStatus.SaveLiveDeck)
-  // TODO: smarter way to update userModel?
-  var delta = userModelResponse.user_model
-  userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
-  userModel!!.user_live_party_by_id = delta.user_live_party_by_id
-  randomDelay(8000)
-  userModelResponse = saveSuit(
-    deckId = 1,
-    cardIndex = 1,
-    suitMasterId = 100012001
-  )!!
-  sqlSetStatus(SqlAccountStatus.SaveSuit)
-  delta = userModelResponse.user_model
-  userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
-  randomDelay(8000)
-  val fetchLivePartnersResponse = fetchLivePartners()
-  randomDelay(8000)
-  startLiveResponse = startLive(
-    liveDifficultyId = 31001101,
-    cellId = 1005,
-    deckId = 1
-  )!!
-  randomDelay(8000)
-  skipLiveResponse = skipLive(
-    live = startLiveResponse.live,
-    stamina = 7491,
-    power = 1341,
-    targetScore = 50000
-  )!!
-  sqlSetStatus(SqlAccountStatus.Live31001101)
-  randomDelay(10000)
-  val fetchGachaMenuResponse = fetchGachaMenu()!!
-  randomDelay(4000)
-  val drawGachaResponse = drawGacha(id = 1)!!
-  sqlSetStatus(SqlAccountStatus.DrawGacha)
-  randomDelay(15000)
-  bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
-  randomDelay(10000)
-  userModelResponse = tutorialPhaseEnd()!!
-  sqlSetStatus(SqlAccountStatus.TutorialEnd)
-  val fetchGameServiceDataResponse = fetchGameServiceData()!!
-  val linkGameServiceResponse = linkGameService()!!
-  sqlSetStatus(SqlAccountStatus.LinkGameService)
-  bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
+  while (sqlStatus()!! < SqlAccountStatus.TutorialEnd) {
+    tutorialStep()
+  }
+}
+
+fun tutorialStep() {
+  val status = sqlStatus()!!
+  when (status) {
+    SqlAccountStatus.Startup -> {
+      var terms = userModel!!.user_status.terms_of_use_version
+      if (terms == 0) terms = 1 // TODO: is this how it works?
+      termsAgreement(terms)!!
+      sqlSetStatus(SqlAccountStatus.TermsAgreement)
+      randomDelay(9000)
+    }
+    SqlAccountStatus.TermsAgreement -> {
+      setUserProfile(name = generateName())!!
+      sqlSetStatus(SqlAccountStatus.SetName)
+      randomDelay(9000)
+    }
+    SqlAccountStatus.SetName -> {
+      setUserProfile(nickname = generateNickname())!!
+      sqlSetStatus(SqlAccountStatus.SetNickName)
+      randomDelay(4000)
+    }
+    SqlAccountStatus.SetNickName -> {
+      setUserProfileBirthDay()!!
+      sqlSetStatus(SqlAccountStatus.SetBirthDay)
+      randomDelay(10000)
+    }
+    SqlAccountStatus.SetBirthDay -> {
+      finishUserStoryMain(cellId = 1001)!!
+      sqlSetStatus(SqlAccountStatus.Story1001)
+      randomDelay(1000)
+    }
+    SqlAccountStatus.Story1001, SqlAccountStatus.RuleDescription1 -> {
+      var startLiveResponse = startLive(
+        liveDifficultyId = 30001301,
+        cellId = 1002,
+        deckId = 1
+      )!!
+      randomDelay(4000)
+      if (status < SqlAccountStatus.RuleDescription1) {
+        saveRuleDescription(ids = listOf(1))!!
+        sqlSetStatus(SqlAccountStatus.RuleDescription1)
+        randomDelay(4000)
+      }
+      var skipLiveResponse = skipLive(
+        live = startLiveResponse.live,
+        stamina = 6578, // TODO: calc these
+        power = 1040,
+        targetScore = 35000
+      )!!
+      sqlSetStatus(SqlAccountStatus.Live30001301)
+      randomDelay(10000)
+    }
+    SqlAccountStatus.Live30001301 -> {
+      finishUserStoryMain(cellId = 1003)!!
+      sqlSetStatus(SqlAccountStatus.Story1003)
+    }
+    SqlAccountStatus.Story1003, SqlAccountStatus.RuleDescription2 -> {
+      val startLiveResponse = startLive(
+        liveDifficultyId = 31007301,
+        cellId = 1004,
+        deckId = 2
+      )!!
+      randomDelay(4000)
+      if (status < SqlAccountStatus.RuleDescription2) {
+        saveRuleDescription(ids = listOf(2))!!
+        sqlSetStatus(SqlAccountStatus.RuleDescription2)
+        randomDelay(4000)
+      }
+      skipLive(
+        live = startLiveResponse.live,
+        stamina = 5812,
+        power = 1047,
+        targetScore = 40000
+      )!!
+      sqlSetStatus(SqlAccountStatus.Live31007301)
+      randomDelay(10000)
+    }
+    SqlAccountStatus.Live31007301 -> {
+      setFavoriteMember(id = 1)!!
+      sqlSetStatus(SqlAccountStatus.SetFavoriteMember)
+      randomDelay(4000)
+    }
+    SqlAccountStatus.SetFavoriteMember -> {
+      fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+      randomDelay(10000)
+      tapLovePoint(memberMasterId = 1)!!
+      sqlSetStatus(SqlAccountStatus.TapLovePoint)
+      randomDelay(4000)
+    }
+    SqlAccountStatus.TapLovePoint -> {
+      saveUserNaviVoice(ids = listOf(100010004))!!
+      sqlSetStatus(SqlAccountStatus.NaviVoice100010004)
+      randomDelay(8000)
+    }
+    SqlAccountStatus.NaviVoice100010004 -> {
+      fetchTrainingTree(cardMasterId = 100012001)!!
+      randomDelay(8000)
+      levelUpCard(cardMasterId = 100012001)!!
+      sqlSetStatus(SqlAccountStatus.LevelUpCard)
+      randomDelay(8000)
+    }
+    SqlAccountStatus.LevelUpCard -> {
+      val activateTrainingTreeResponse = activateTrainingTreeCell(
+        cardMasterId = 100012001,
+        cellMasterIds =
+          listOf(17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+      )!!
+      sqlSetStatus(SqlAccountStatus.Training)
+      randomDelay(30000)
+    }
+    SqlAccountStatus.Training -> {
+      finishUserStorySide(masterId = 1000120011)!!
+      sqlSetStatus(SqlAccountStatus.StorySide)
+      randomDelay(8000)
+    }
+    SqlAccountStatus.StorySide -> {
+      updateCardNewFlag(masterIds = listOf(100012001))!!
+      sqlSetStatus(SqlAccountStatus.NewFlag)
+      randomDelay(8000)
+    }
+    SqlAccountStatus.NewFlag -> {
+      // TODO: do I need to hardcode this? is there any way to generate it?
+      // what does cardWithSuit mean? why do the squad id's start from 101?
+      val userModelResponse = saveLiveDeckAll(
+        deckId = 1,
+        cardWithSuit = mapOf(
+          100012001 to null,
+          102071001 to null,
+          102081001 to null,
+          101031001 to null,
+          101061001 to null,
+          101051001 to null,
+          100051001 to null,
+          100051001 to null,
+          100091001 to 100091001,
+          100081001 to 100081001
+        ),
+        squad = mapOf(
+          101 to LiveSquad(listOf(100012001, 101061001, 101051001)),
+          102 to LiveSquad(listOf(102081001, 101031001, 100051001)),
+          103 to LiveSquad(listOf(102071001, 100091001, 100081001))
+        )
+      )!!
+      sqlSetStatus(SqlAccountStatus.SaveLiveDeck)
+      // TODO: smarter way to update userModel?
+      var delta = userModelResponse.user_model
+      userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
+      userModel!!.user_live_party_by_id = delta.user_live_party_by_id
+      randomDelay(8000)
+    }
+    SqlAccountStatus.SaveLiveDeck -> {
+      val userModelResponse = saveSuit(
+        deckId = 1,
+        cardIndex = 1,
+        suitMasterId = 100012001
+      )!!
+      sqlSetStatus(SqlAccountStatus.SaveSuit)
+      val delta = userModelResponse.user_model
+      userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
+      randomDelay(8000)
+    }
+    SqlAccountStatus.SaveSuit -> {
+      fetchLivePartners()!!
+      randomDelay(8000)
+      val startLiveResponse = startLive(
+        liveDifficultyId = 31001101,
+        cellId = 1005,
+        deckId = 1
+      )!!
+      randomDelay(8000)
+      skipLive(
+        live = startLiveResponse.live,
+        stamina = 7491,
+        power = 1341,
+        targetScore = 50000
+      )!!
+      sqlSetStatus(SqlAccountStatus.Live31001101)
+      randomDelay(10000)
+    }
+    SqlAccountStatus.Live31001101 -> {
+      fetchGachaMenu()!!
+      randomDelay(4000)
+      drawGacha(id = 1)!!
+      sqlSetStatus(SqlAccountStatus.DrawGacha)
+      randomDelay(15000)
+    }
+    SqlAccountStatus.DrawGacha -> {
+      fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+      randomDelay(10000)
+      tutorialPhaseEnd()!!
+      sqlSetStatus(SqlAccountStatus.TutorialEnd)
+    }
+    SqlAccountStatus.TutorialEnd -> {
+      fetchGameServiceData()!!
+      linkGameService()!!
+      sqlSetStatus(SqlAccountStatus.LinkGameService)
+    }
+  }
+}
+
+// login, complete tutorial if incomplete and get gifts
+public fun loginAndGetGifts() {
+  loginAndCompleteTutorial()
+  var bstrapResponse =
+    fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
   // TODO: figure out what type are comeback, event_3d and birthday bonuses
   val bonuses = bstrapResponse.fetch_bootstrap_login_bonus_response
   for (bonus in bonuses.event_2d_login_bonuses) {
@@ -2331,8 +2288,7 @@ fun main(args: Array<String>) {
     randomDelay(5000)
     readLoginBonus(type = 1, id = bonus.login_bonus_id)!!
   }
-  userModelResponse =
-    saveUserNaviVoice(ids = listOf(100010123, 100010113))!!
+  saveUserNaviVoice(ids = listOf(100010123, 100010113))!!
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
   bstrapResponse.fetch_bootstrap_notice_response.super_notices
     .lastOrNull()?.let {
@@ -2350,4 +2306,191 @@ fun main(args: Array<String>) {
   sqlSetStars(presentResponse.user_model_diff.user_status.free_sns_coin)
   randomDelay(9000)
   fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+}
+
+// ------------------------------------------------------------------------
+
+val sqlStatement: Statement by lazy {
+  var stmt: Statement? = null
+  while (stmt == null) {
+    try {
+      stmt = DriverManager
+        .getConnection("jdbc:sqlite:todokete.db")
+        .createStatement()
+      stmt.setQueryTimeout(30)
+      stmt.executeUpdate("""
+      create table if not exists accounts(
+        id integer primary key,
+        serviceId char[22] not null,
+        authCount integer not null,
+        stars integer,
+        lastLogin integer,
+        status integer not null,
+        deviceToken char[154]
+      )
+      """)
+    } catch (e: SQLException) {
+      println("sqlite error: $e")
+      Thread.sleep(1000)
+    }
+  }
+  stmt!!
+}
+
+fun sqlUpdate(sql: String) {
+  while (true) {
+    try {
+      sqlStatement.executeUpdate(sql)
+      return
+    } catch (e: SQLException) {
+      println("sqlite error: $e")
+      Thread.sleep(1000)
+    }
+  }
+}
+
+fun sqlUpdateById(sql: String) =
+  sqlUpdate("update accounts $sql where id = $userId")
+
+fun sqlQuery(sql: String): ResultSet {
+  while (true) {
+    try {
+      return sqlStatement.executeQuery(sql)
+    } catch (e: SQLException) {
+      println("sqlite error: $e")
+      Thread.sleep(1000)
+    }
+  }
+}
+
+fun sqlQueryById(sql: String = "*") =
+  sqlQuery("select $sql from accounts where id = $userId")
+
+fun sqlQueryIntById(field: String): Int? {
+  val rowSet = sqlQueryById(field)
+  if (rowSet.next()) {
+    return rowSet.getInt(field)
+  }
+  return null
+}
+
+fun sqlNewAccount() {
+  val startup = SqlAccountStatus.Startup.value
+  sqlUpdate("insert into " +
+    "accounts(id, serviceId, status, authCount, deviceToken) " +
+    "values($userId, '$serviceId', $startup, 1, '$deviceToken')")
+}
+
+fun sqlIncreaseAuthCount() {
+  val time = System.currentTimeMillis()
+  sqlUpdateById("set authCount = authCount + 1, lastLogin = $time")
+}
+
+fun sqlAuthCount(): Int? = sqlQueryIntById("authCount")
+
+fun sqlStatus(): SqlAccountStatus? {
+  sqlQueryIntById("status")?.let { return SqlAccountStatus.fromInt(it) }
+  return null
+}
+
+fun sqlSetStatus(status: SqlAccountStatus) {
+  val value = status.value
+  sqlUpdateById("set status = $value")
+}
+
+fun sqlSetStars(stars: Int) = sqlUpdateById("set stars = $stars")
+
+fun sqlSetDeviceToken(token: String) =
+  sqlUpdateById("set device_token = $token")
+
+enum class SqlAccountStatus(val value: Int) {
+  Startup(1),
+  TermsAgreement(2),
+  SetName(3),
+  SetNickName(4),
+  SetBirthDay(5),
+  Story1001(6),
+  RuleDescription1(7),
+  Live30001301(8),
+  Story1003(9),
+  RuleDescription2(10),
+  Live31007301(11),
+  SetFavoriteMember(12),
+  TapLovePoint(13),
+  NaviVoice100010004(14),
+  LevelUpCard(15),
+  Training(16),
+  StorySide(17),
+  NewFlag(18),
+  SaveLiveDeck(19),
+  SaveSuit(20),
+  Live31001101(21),
+  DrawGacha(22),
+  TutorialEnd(23),
+  LinkGameService(24);
+
+  companion object {
+    private val map = SqlAccountStatus.values()
+      .associateBy(SqlAccountStatus::value)
+    fun fromInt(type: Int) = map[type]
+  }
+}
+
+// ------------------------------------------------------------------------
+
+// just in case I accidentally break critical functions
+init {
+  sanityCheck()
+}
+
+fun sanityCheck() {
+  val randomBytes =
+    base64Decoder.decode("CB7tjOEZK6IQJrX93O0BuTjM5txYFmFO8sv1Pq9eAcE=")
+  val generated = assetStateLogGenerateV2()
+  val expected = "D9NtY0n3oGxKjhaaJtABDcErt3xQ6kV5gjwD9kmKTG9SprprtHN7" +
+    "Yz8vUHfZpisWHG3lgU2Lh43ELGIOWIUKN3S3C8Bx3BVU0w=="
+  assert(generated == expected)
+}
+} // AllStarsClient
+
+// ------------------------------------------------------------------------
+
+fun randomLine(file: String): String? {
+  var n = 0
+  File(file).forEachLine { n += 1 }
+  val line = Random.nextInt(0, n)
+  n = 0
+  File(file).useLines { lines ->
+    for (x in lines) {
+      n += 1
+      if (n == line) {
+        return x
+      }
+    }
+  }
+  return null
+}
+
+fun String.limitLen(len: Int): String =
+  if (length > len) slice(0..len - 1) else this
+
+fun generateName(): String {
+  val name = randomLine("names.txt")!!.limitLen(4).toLowerCase()
+  val place = randomLine("places.txt")!!.limitLen(4).toLowerCase()
+  return when (Random.nextInt(0, 2)) {
+    0 -> name + place
+    else -> name + place + Random.nextInt(0, 99).toString()
+  }
+}
+
+fun generateNickname(): String = randomLine("names.txt")!!.limitLen(10)
+fun generateDeviceName(): String = randomLine("devices.txt")!!
+
+fun main(args: Array<String>) {
+  val llas = AllStarsClient(
+    name = generateName(),
+    nickname = generateNickname(),
+    deviceName = generateDeviceName()
+  )
+  llas.makeAccount()
 }

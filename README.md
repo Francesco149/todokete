@@ -82,7 +82,20 @@ cd ~/todokete
 ./build.sh
 ```
 
-# progress
+# client progress
+- [x] store accounts in a database. this is very early and might change
+  significantly as the client takes shape
+- [x] keep track of account tutorial status in case of failed requests,
+  crashes, disconnects, etc
+- [ ] resume accounts with incomplete tutorial
+- [ ] log in existing accounts
+- [ ] configurable endpoint and other version/region tied things
+- [ ] multithread support
+- [ ] store full request logs for each account
+- [ ] a way to view and filter all logs combined
+- [ ] proxy support
+
+# api progress
 - [x] `/login/startup`: creates a new account
 - [x] `/login/login`: log into existing account
 - [x] properly generating `asset_state` instead of hardcoding it
