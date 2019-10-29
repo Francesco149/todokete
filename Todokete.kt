@@ -2045,6 +2045,7 @@ public fun makeAccount() {
   sqlNewAccount()
   val authKey = base64Decoder.decode(startupResponse.authorization_key)
   sessionKey = authKey.xor(randomBytes)
+  sqlSetServiceUserCommonKey(sessionKey)
   randomDelay(2000)
   loginAndGetGifts()
 }
@@ -2400,6 +2401,14 @@ init {
     sqlUpdate("alter table accounts add serviceUserCommonKey char[44]")
     println("[db] done")
   }
+
+  // early versions did not store the startup key so accounts that didn't
+  // complete the tutorial and link to their service id are unrecoverable
+  sqlUpdate("""
+  delete from accounts
+  where status < ${SqlAccountStatus.LinkGameService.value}
+  and serviceUserCommonKey is null
+  """)
 }
 
 fun sqlUpdate(sql: String) {
