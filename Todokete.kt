@@ -2065,7 +2065,7 @@ public fun loginAndCompleteTutorial() {
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
   sessionKey = loginSessionKey.xor(randomBytes)
   randomDelay(9000)
-  while (sqlStatus()!! < SqlAccountStatus.TutorialEnd) {
+  while (sqlStatus()!! < SqlAccountStatus.LinkGameService) {
     tutorialStep()
   }
 }
