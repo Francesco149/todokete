@@ -103,7 +103,9 @@ the body of each request is a json array that contains two elements
 
 `[{"my_data": "blahblah"},"123456789abcdef123456789abcdef123456789a"]`
 
-request headers are the default okhttp3 headers
+request headers are the default okhttp3 headers, plus
+`content-type: application/json` . make sure this header doesn't have
+the charset part or the server will refuse
 
 the hash obtained by running hmac-sha1 on a string that contains the
 request path (including the query string) and the json object, separated
