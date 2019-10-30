@@ -9,6 +9,9 @@
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.prompt
+import com.github.ajalt.clikt.parameters.types.int
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
@@ -38,6 +41,7 @@ import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
+import okhttp3.HttpUrl
 import okhttp3.MediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -256,7 +260,6 @@ var flags = 0 // used in call()
 var masterVersion: String? = null // obtained after the first request
 var lastRequestTime: Long = 0
 var userModel: UserModel? = null // TODO: keep this properly updated
-var firstLogin: Boolean = false
 
 // ------------------------------------------------------------------------
 // http client
@@ -2035,6 +2038,83 @@ fun receivePresent(ids: List<Int>): ReceivePresentResponse? {
   return parseResponse(response)
 }
 
+data class GetClearedPlatformAchievementResponse(
+  val cleared_ids: List<Int>
+)
+
+fun getClearedPlatformAchievement():
+  GetClearedPlatformAchievementResponse? {
+  val response = call(
+    path = "/bootstrap/getClearedPlatformAchievement",
+    payload = gson.toJson(null)
+  )
+  return parseResponse(response)
+}
+
+data class FetchSchoolIdolFestivalIdRewardResponse(
+  val visible_mission_ids: List<Int>,
+  val is_new_mission_ids: List<Int>,
+  val ll_user_name: LocalizedText?,
+  val user_model_diff: UserModel
+)
+
+fun fetchSchoolIdolFestivalIdReward():
+  FetchSchoolIdolFestivalIdRewardResponse? {
+  val response = call(
+    path = "/schoolIdolFestivalIdReward/fetch",
+    payload = gson.toJson(null)
+  )
+  return parseResponse(response)
+}
+
+data class LinkedInfo(
+  val is_platform_linked: Boolean,
+  val is_school_idol_festival_id_linked: Boolean
+)
+
+fun fetchDataLinks(): LinkedInfo? {
+  val response = call(
+    path = "/dataLink/fetchDataLinks",
+    payload = gson.toJson(null)
+  )
+  return parseResponse(response)
+}
+
+data class FetchSchoolIdolFestivalIdDataRequest(
+  val auth_code: String,
+  val mask: String
+)
+
+data class FetchSchoolIdolFestivalIdDataResponse(val data: UserLinkData?)
+
+fun fetchSchoolIdolFestivalIdDataAfterLogin(
+  authCode: String
+): FetchSchoolIdolFestivalIdDataResponse? {
+  val response = call(
+    path = "/dataLink/fetchSchoolIdolFestivalIdDataAfterLogin",
+    payload = gson.toJson(FetchSchoolIdolFestivalIdDataRequest(
+      auth_code = authCode,
+      mask = generateMask()
+    ))
+  )
+  val res: FetchSchoolIdolFestivalIdDataResponse? = parseResponse(response)
+  res?.data?.let {
+    it.service_user_common_key =
+      it.authorization_key.fromBase64().xor(randomBytes)
+  }
+  return res
+}
+
+data class LinkSchoolIdolFestivalIdResponse(val user_model: UserModel)
+
+fun linkSchoolIdolFestivalId(): LinkSchoolIdolFestivalIdResponse? {
+  val response = call(
+    path = "/dataLink/linkSchoolIdolFestivalId",
+    payload = gson.toJson(null)
+  )
+  return parseResponse(response)
+}
+
 // ------------------------------------------------------------------------
 // client
 
@@ -2044,7 +2124,6 @@ fun receivePresent(ids: List<Int>): ReceivePresentResponse? {
 //   google services on your device
 // - name and nickname must be max 12 characters
 public fun makeAccount() {
-  firstLogin = true
   fetchGameServiceDataBeforeLogin()!!
   randomDelay(1000)
   val startupResponse = startup()!!
@@ -2054,12 +2133,129 @@ public fun makeAccount() {
   sqlSetServiceUserCommonKey(sessionKey)
   randomDelay(2000)
   loginAndGetGifts()
-  firstLogin = false
+}
+
+var sifidSession = ""
+
+// TODO: handle errors gracefully here
+fun sifidRequest(
+  path: String,
+  queryParams: Map<String, String> = emptyMap(),
+  body: String? = null,
+  mediaType: String? = null
+): String? {
+  var urlBuilder = HttpUrl.Builder()
+    .scheme("https")
+    .host("www.sifid.net")
+    .addPathSegment(path)
+  queryParams.map {
+    urlBuilder = urlBuilder.addEncodedQueryParameter(it.key, it.value)
+  }
+  val url = urlBuilder.build()
+  var builder = Request.Builder()
+    .url(url)
+    .header("User-Agent", "Mozilla/5.0 (Android 8.1.0; Tablet; rv:68.0) " +
+      "Gecko/68.0 Firefox/68.0")
+    .header("Accept", "text/html,application/xhtml+xml,application/xml;" +
+      "q=0.9,*/*;q=0.8")
+    .header("Accept-Language", "en-US,en;q=0.5")
+    .header("Accept-Encoding", "gzip, deflate, br")
+    .header("Connection", "keep-alive")
+    .header("Cookie", "beaker.session.id=$sifidSession")
+    .header("Upgrade-Insecure-Requests", "1")
+  if (mediaType != null && body != null) {
+    val mt = MediaType.parse(mediaType)
+    builder = builder.post(RequestBody.create(mt, body.toByteArray()))
+  }
+  val request = builder.build()
+  println(request)
+  val response = httpClient.newCall(request).execute()
+  if (response.code() != 302 && !response.isSuccessful) {
+    println("unexpected code $response")
+    return null
+  }
+  if ((flags and PrintHeaders) != 0) {
+    val headers = response.headers()
+    for (i in 0..headers.size() - 1) {
+      val name = headers.name(i)
+      val value = headers.value(i)
+      println("$name: $value")
+    }
+  }
+  if (response.code() == 302) {
+    return response.header("Location")!!
+  }
+  return response.body()!!.string()
+}
+
+// login, complete tutorial, get gifts and associate a sif id with this acc
+// returns success
+public fun linkSifid(mail: String, password: String): Boolean {
+  loginAndCompleteTutorial()
+  getClearedPlatformAchievement()!!
+  randomDelay(4000)
+  fetchSchoolIdolFestivalIdReward()!!
+  randomDelay(8000)
+  val dataLinks = fetchDataLinks()!!
+  if (dataLinks.is_school_idol_festival_id_linked) {
+    println("this account already has a sif id linked")
+    return false
+  }
+  sifidSession = List(32) { "abcdef0123456789".random() }.joinToString("")
+  // NOTE: okhttp automatically follows redirects
+  // this redirects to login
+  // state = https://docs.unity3d.com/ScriptReference/Random-value.html
+  // it's a simple token to prevent malware from mitming the auth
+  sifidRequest(path = "auth", queryParams = mapOf(
+    // OkHttp doesn't escape params as I need em, so I'm gonna manually
+    // hardcode them escaped. the server is very picky about this
+    // TODO: don't do this shit
+    "redirect_uri" to
+      "com%2eklab%2elovelive%2eallstars%3a%2f%2fklab_id%2fcallback",
+    "response_type" to "code",
+    "state" to "%.7f".format(Random.nextDouble()).replace(".", "%2e"),
+    "client_id" to "lovelive%2eallstars",
+    "scope" to "transfer_user_data+reference_user_id+reference_user_data"
+  ))!!
+  sifidRequest(path = "static/css/style_20191011.css")!!
+  var bodyParams = HttpUrl.Builder()
+    .scheme("http")
+    .host("example.com")
+    .addQueryParameter("email", mail)
+    .addQueryParameter("password", password)
+    .build()
+  // this redirects to auth which redirects to home
+  sifidRequest(path = "login",
+    mediaType = "application/x-www-form-urlencoded",
+    body = bodyParams.query()
+  )!!
+  // this redirects to
+  // com.klab.lovelive.allstars://klab_id/callback?state=xxx&code=xxxx
+  // we want the code
+  val redirect = sifidRequest(path = "allow",
+    mediaType = "application/x-www-form-urlencoded",
+    body = "token=$sifidSession"
+  )!!
+  println("redirect is $redirect")
+  // workaround because HttpUrl can't handle non http schemes
+  val redirectUrl = HttpUrl.parse(redirect
+    .replace("com.klab.lovelive.allstars://", "http://example.com"))!!
+  val code = redirectUrl.queryParameter("code")!!
+  println("code is $code")
+  val fetchedData =
+    fetchSchoolIdolFestivalIdDataAfterLogin(authCode = code)!!
+  if (fetchedData.data != null) {
+    println("this sif id is already linked to an account: $fetchedData")
+    return false
+  }
+  linkSchoolIdolFestivalId()!!
+  sqlSetSifid(mail = mail, password = password)
+  return true
 }
 
 // picks a random account that hasn't been logged in hoursAgo hours or more
-// then sets up the client to log it in. returns serviceId
-public fun getStaleAccount(hoursAgo: Long = 24): String? {
+// then sets up the client to log it in. returns self
+public fun getStaleAccount(hoursAgo: Long = 24): AllStarsClient? {
   val old = System.currentTimeMillis() - 3600000.toLong() * hoursAgo
   val rowSet = sqlQuery("""
   select id, serviceId from accounts
@@ -2068,15 +2264,15 @@ public fun getStaleAccount(hoursAgo: Long = 24): String? {
   if (rowSet.next()) {
     serviceId = rowSet.getString("serviceId")
     userId = rowSet.getInt("id")
-    return serviceId
+    return this
   }
   return null
 }
 
 // picks a random account that hasn't fully completed the tutorial
 // and hasn't been touched in >1h, then sets up the client to log it in.
-// returns serviceId
-public fun getIncompleteAccount(): String? {
+// returns self
+public fun getIncompleteAccount(): AllStarsClient? {
   // crappy way to avoid conflicting with parallel account creation.
   // assuming it never gets stuck for >1h
   // TODO: more reliable way to avoid competition between create/login
@@ -2089,9 +2285,18 @@ public fun getIncompleteAccount(): String? {
   if (rowSet.next()) {
     serviceId = rowSet.getString("serviceId")
     userId = rowSet.getInt("id")
-    return serviceId
+    return this
   }
   return null
+}
+
+// load account by id and set up the client to log it in. returns self
+public fun getAccount(id: Int): AllStarsClient? {
+  userId = id
+  return sqlGetServiceId()?.let {
+    serviceId = it
+    this
+  }
 }
 
 fun loginAndCompleteTutorial() {
@@ -2123,7 +2328,7 @@ fun loginAndCompleteTutorial() {
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
   sessionKey = loginSessionKey.xor(randomBytes)
   randomDelay(9000)
-  if (!fetchedData && !firstLogin) {
+  if (!fetchedData && sqlStatus()!! >= SqlAccountStatus.LinkGameService) {
     // from my observations, this is only sent when we already have a key
     val fetchResponse = fetchGameServiceData()!!
     sqlSetServiceUserCommonKey(fetchResponse.data.service_user_common_key)
@@ -2412,7 +2617,9 @@ fun createAccountsTable() {
     status integer not null,
     deviceToken char[154],
     deviceName text,
-    serviceUserCommonKey char[44]
+    serviceUserCommonKey char[44],
+    sifidMail text,
+    sifidPassword text
   )
   """)
 }
@@ -2424,7 +2631,7 @@ init {
     println("[db] initializing database")
     createAccountsTable()
     createInfoTable()
-    sqlSetVersion(2)
+    sqlSetVersion(3)
     println("[db] done")
   } else if (!tableExists("todokete_info")) {
     println("[db] migrating to db version 1")
@@ -2443,6 +2650,14 @@ init {
     sqlUpdate("insert into accounts select * from accounts_old")
     sqlUpdate("drop table accounts_old")
     sqlSetVersion(2)
+    println("[db] done")
+  }
+
+  if (sqlVersion()!! < 3) {
+    println("[db] migrating to db version 3")
+    sqlUpdate("alter table accounts add sifidMail text")
+    sqlUpdate("alter table accounts add sifidPassword text")
+    sqlSetVersion(3)
     println("[db] done")
   }
 
@@ -2551,10 +2766,23 @@ fun sqlSetStars(stars: Int) = sqlUpdateById("set stars = $stars")
 fun sqlSetDeviceName(value: String) =
   sqlUpdateById("set deviceName = '$value'")
 
+fun sqlSetSifid(mail: String, password: String) =
+  sqlUpdateById("set sifidMail = '$mail', sifidPassword = '$password'")
+
+fun sqlGetSifid(): Pair<String?, String?>? {
+  val rowSet = sqlQueryById("sifidMail, sifidPassword")
+  if (rowSet.next()) {
+    return rowSet.getString("sifidMail") to
+      rowSet.getString("sifidPassword")
+  }
+  return null
+}
+
 fun sqlSetServiceUserCommonKey(value: ByteArray) {
   sqlUpdateById("set serviceUserCommonKey = '${value.toBase64()}'")
 }
 
+fun sqlGetServiceId(): String? = sqlQueryStringById("serviceId")
 fun sqlGetDeviceName(): String? = sqlQueryStringById("deviceName")
 fun sqlGetDeviceToken(): String? = sqlQueryStringById("deviceToken")
 
@@ -2674,10 +2902,25 @@ class Gifts : CliktCommand(
   }
 }
 
+class Link : CliktCommand(help = "Link a sifid to an account") {
+  val id: Int by option(help = "User ID").int().prompt("account id")
+  val mail: String by option(help = "sifid.net email")
+    .prompt("sifid.net email")
+  val password: String by option(help = "sifid.net password")
+    .prompt("sifid.net password")
+  override fun run() {
+    AllStarsClient().getAccount(id)?.let {
+      it.linkSifid(mail = mail, password = password)
+    } ?: run {
+      println("account $id not found")
+    }
+  }
+}
+
 class Todokete : CliktCommand() {
   override fun run() = Unit
 }
 
 fun main(args: Array<String>) = Todokete()
-  .subcommands(Create(), Gifts())
+  .subcommands(Create(), Gifts(), Link())
   .main(args)

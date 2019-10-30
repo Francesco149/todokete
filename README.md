@@ -94,6 +94,7 @@ cd ~/todokete
 - [ ] store full request logs for each account
 - [ ] a way to view and filter all logs combined
 - [ ] proxy support
+- [x] link sifid.net account
 
 # protocol overview
 the body of each request is a json array that contains two elements
@@ -180,6 +181,9 @@ apis that return your password:
   the linked service id
 - `/dataLink/fetchGameServiceData` same as above but it's an authenticated
   request signed with your password
+- [x] `/dataLink/fetchSchoolIdolFestivalIdDataAfterLogin`
+  get accounts associated with this sifid. it returns link data like
+  fetchGameServiceData
 
 as soon as you obtain your password, you should change your sessionKey from
 the startup key to the password and sign all authenticated requests with it
@@ -261,6 +265,19 @@ libjackpot-core.so
 - [x] `/present/fetch` gets a list of pending presents. empty request
 - [x] `/present/receive` opens presents, takes a list of present id's from
   `/present/fetch`
+- [x] `/bootstrap/getClearedPlatformAchievement` gets a list of
+  achievement id's (probably linked to stuff like the android game hub
+  or whatever it's called). empty request
+- [x] `/schoolIdolFestivalIdReward/fetch` gets a list of sif id rewards.
+  empty request
+- [x] `/dataLink/fetchDataLinks` checks whether you have a sifid linked
+  as well as whatever gaming platform your phone uses. empty request
+- [x] `/dataLink/fetchSchoolIdolFestivalIdDataAfterLogin`
+  get accounts associated with this sifid. it returns link data like
+  fetchGameServiceData
+- [x] `/dataLink/linkSchoolIdolFestivalId` link your sifid. empty request,
+  sent after fetchSchoolIdolFestivalIdDataAfterLogin which is probably
+  how the server knows what sifid to link
 
 # rationale
 why kotlin? it just so happens that the http library used by the game is
