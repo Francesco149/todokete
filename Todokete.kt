@@ -256,6 +256,7 @@ var flags = 0 // used in call()
 var masterVersion: String? = null // obtained after the first request
 var lastRequestTime: Long = 0
 var userModel: UserModel? = null // TODO: keep this properly updated
+var firstLogin: Boolean = false
 
 // ------------------------------------------------------------------------
 // http client
@@ -2038,7 +2039,12 @@ fun receivePresent(ids: List<Int>): ReceivePresentResponse? {
 // client
 
 // creates a new account, completes tutorial, gets gifts
+// - requires name, nickname, deviceName, deviceToken, serviceId to be set
+// - deviceToken can be an empty string, this means that you don't have
+//   google services on your device
+// - name and nickname must be max 12 characters
 public fun makeAccount() {
+  firstLogin = true
   fetchGameServiceDataBeforeLogin()!!
   randomDelay(1000)
   val startupResponse = startup()!!
@@ -2048,6 +2054,7 @@ public fun makeAccount() {
   sqlSetServiceUserCommonKey(sessionKey)
   randomDelay(2000)
   loginAndGetGifts()
+  firstLogin = false
 }
 
 // picks a random account that hasn't been logged in hoursAgo hours or more
@@ -2087,31 +2094,40 @@ public fun getIncompleteAccount(): String? {
   return null
 }
 
-public fun loginAndCompleteTutorial() {
-  // if we get here from makeAccount, sessionKey is set and we dont do this
-  if (sessionKey.contentEquals(startupKey.toByteArray())) {
-    // on first login we get and store the sessionKey from the link data
-    // otherwise, just use the stored one
-    sqlGetServiceUserCommonKey()?.let { sessionKey = it }
-    ?: run {
-      userId = 0 // workaround to avoid u= in this request
-      val fetchResponse = fetchGameServiceDataBeforeLogin()!!
-      val data = fetchResponse.data!!.linked_data
-      sessionKey = data.service_user_common_key
-      // load other account data from db
-      userId = data.user_id
-      sqlSetServiceUserCommonKey(data.service_user_common_key)
-      sqlGetDeviceName()?.let { deviceName = it }
-      ?: run { sqlSetDeviceName(deviceName) }
-      deviceToken = sqlGetDeviceToken()!!
+fun loginAndCompleteTutorial() {
+  // if we get here from makeAccount, we already have a key
+  val fetchedData = sqlGetServiceUserCommonKey()?.let {
+    sessionKey = it
+    false
+  } ?: run {
+    // this should never happen because makeAccount stores the key
+    // but it can be useful if we somehow lose the key and have the service
+    // id linked
+    userId = 0 // workaround to avoid u= in this request
+    val fetchResponse = fetchGameServiceDataBeforeLogin()!!
+    fetchResponse.data!!.linked_data.let {
+      sessionKey = it.service_user_common_key
+      userId = it.user_id
+      sqlSetServiceUserCommonKey(it.service_user_common_key)
     }
+    true
   }
+  // just in case we're lacking a device name somehow
+  sqlGetDeviceName()?.let { deviceName = it }
+  ?: run { sqlSetDeviceName(deviceName) }
+  // TODO: is device token empty or null when there's no google services?
+  sqlGetDeviceToken()?.let { deviceToken = it }
   val loginResponse = login()!!
   sqlIncreaseAuthCount()
   userModel = loginResponse.user_model // TODO: auto update this
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
   sessionKey = loginSessionKey.xor(randomBytes)
   randomDelay(9000)
+  if (!fetchedData && !firstLogin) {
+    // from my observations, this is only sent when we already have a key
+    val fetchResponse = fetchGameServiceData()!!
+    sqlSetServiceUserCommonKey(fetchResponse.data.service_user_common_key)
+  }
   while (tutorialStep()) { }
 }
 
@@ -2317,6 +2333,8 @@ fun tutorialStep(): Boolean {
 }
 
 // login, complete tutorial if incomplete and get gifts
+// - if deviceName is set and the account has no deviceName, it will be
+//   associated to this deviceName
 public fun loginAndGetGifts() {
   loginAndCompleteTutorial()
   var bstrapResponse =
@@ -2336,6 +2354,7 @@ public fun loginAndGetGifts() {
       readLoginBonus(type = 1, id = bonus.login_bonus_id)!!
     }
   }
+  // TODO: should these be removed after the first time?
   saveUserNaviVoice(ids = listOf(100010123, 100010113))!!
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
   bstrapResponse
