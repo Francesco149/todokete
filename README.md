@@ -167,7 +167,9 @@ calls provided that you linked a service id to your accout
 
 the public key can be obtained by searching for a string that
 starts with `<RSAKeyValue>` in the Il2CppDumper output as with the
-startup key
+startup key. this is a .net xml key string. most other languages will
+want it converted to pem format. just take the pem formatted key from
+my code, it's probably never gonna change
 
 apis that return your password:
 
