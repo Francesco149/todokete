@@ -167,6 +167,8 @@ the public key can be obtained by searching for a string that
 starts with `<RSAKeyValue>` in the Il2CppDumper output as with the
 startup key
 
+apis that return your password:
+
 - `/login/startup` . this is where you create your account
 - `/dataLink/fetchGameServiceDataBeforeLogin` gets your account data from
   the linked service id
