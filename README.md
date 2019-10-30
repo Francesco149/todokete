@@ -145,8 +145,10 @@ order:
 - p: platform (a for android). this is always present
 - mv: the master version hash. can be obtained from the first response.
   omitted for the first request
+- id: request id. this is a sequential number that starts at 1 and
+  increments for each successful request
 - t: unix timestamp in milliseconds. omitted for the first request
-- id: user id. omitted if not logged in. obtained from creating an account
+- u: user id. omitted if not logged in. obtained from creating an account
   or recovering account data associated with a service id
 
 order of parameters is important. the server cannot handle them out of
