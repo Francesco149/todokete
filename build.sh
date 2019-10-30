@@ -65,8 +65,12 @@ compile() {
 run() {
   echo
   echo "# running"
-  tmpjar=$(mktemp /tmp/XXXXXX.jar)
-  cp "${1}.jar" "$tmpjar"
+  if ${TMPJAR:-false}; then
+    tmpjar=$(mktemp /tmp/XXXXXX.jar)
+    cp "${1}.jar" "$tmpjar"
+  else
+    tmpjar="${1}.jar"
+  fi
   name="$1"
   shift
   params="${@:-create}"
