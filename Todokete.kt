@@ -2978,7 +2978,10 @@ fun getConfigFromRemoteApk(download: Boolean = true): AllStarsConfig {
       break
     }
   }
-  if (download && (localHash == null || localHash != apkHash)) {
+  if (download) {
+    if (localHash != null && localHash == apkHash) {
+      return res
+    }
     val html = apkPureRequest(url = "$apkpure/download?from=versions")
       .body()!!.string()
     // sed -n 's_.*\(https://download\.apkpure\.com/[^"]*\).*_\1_p'
@@ -3018,10 +3021,6 @@ fun getConfigFromRemoteApk(download: Boolean = true): AllStarsConfig {
       }
       break
     }
-  }
-
-  if (download) {
-    return res
   }
 
   println("")
