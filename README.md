@@ -95,6 +95,7 @@ cd ~/todokete
 - [ ] a way to view and filter all logs combined
 - [ ] proxy support
 - [x] link sifid.net account
+- [x] automatically download apk and parse strings and hashes
 
 # protocol overview
 the body of each request is a json array that contains two elements

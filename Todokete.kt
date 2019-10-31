@@ -23,11 +23,17 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import com.tylerthrailkill.helpers.prettyprint.pp
+import java.io.BufferedInputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.lang.Thread
 import java.lang.reflect.ParameterizedType
 import java.math.BigInteger
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.spec.X509EncodedKeySpec
@@ -37,15 +43,19 @@ import java.sql.SQLException
 import java.util.Base64
 import java.util.GregorianCalendar
 import java.util.UUID
+import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
+import kotlin.text.Charsets
 import okhttp3.HttpUrl
 import okhttp3.MediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.Response
 
 // internal globals
 // no thread-unsafe stuff here
@@ -160,47 +170,51 @@ class JsonMapAdapterFactory : TypeAdapterFactory {
 
 // ------------------------------------------------------------------------
 
-class AllStarsClient(
+data class AllStarsConfig(
   // first StringLiteral in  ServerConfig$$.cctor
-  val serverEndpoint: String =
-  "https://jp-real-prod-v4tadlicuqeeumke.api.game25.klabgames.net/ep1015",
+  var ServerEndpoint: String =
+  "https://jp-real-prod-v4tadlicuqeeumke.api.game25.klabgames.net/ep1016",
 
   // second StringLiteral in  ServerConfig$$.cctor
-  val startupKey: String = "5H61ESZxJwcsylnk",
+  var StartupKey: String = "I6ow2cY1c2wWXJP7",
 
   // found in DMCryptography$$CreateRSAProvider . must be converted from
   // xml to pem using a tool like
   // https://gist.github.com/Francesco149/8c6288a853dd010a638892be2a2c48af
-  val rsaPublicKey: String = """-----BEGIN PUBLIC KEY-----
+  var RSAPublicKey: String = """-----BEGIN PUBLIC KEY-----
 MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC/ZUSWq8LCuF2JclEp6uuW9+yddLQvb2420+F8
 rxIF8+W53BiF8g9m6nCETdRw7RVnzNABevMndCCTD6oQ6a2w0QpoKeT26578UCWtGp74NGg2Q2fH
 YFMAhTytVk48qO4ViCN3snFs0AURU06niM98MIcEUnj9vj6kOBlOGv4JWQIDAQAB
 -----END PUBLIC KEY-----""",
 
-  val packageName: String = "com.klab.lovelive.allstars",
+  var PackageName: String = "com.klab.lovelive.allstars",
 
   // md5, sha1, sha256 of the package's certificate in hexstring form
   // obtained by running https://github.com/warren-bank/print-apk-signature
   // on the split apk
-  val packageSignatures: List<String> = listOf(
+  var PackageSignatures: List<String> = listOf(
     "3f45f90cbcc718e4b63462baeae90c86",
     "1be2103a6929b38798a29d89044892f3b3934184",
     "1d32dbcf91697d46594ad689d49bb137f65d4bb8f56a26724ae7008648131b82"
   ),
 
   // md5, sha1, sha256 of libjackpot-core.so in binary form
-  val jackpotSignatures: List<ByteArray> = arrayOf(
-    "81ec95e20a695c600375e3b8349722ab",
-    "5a3cb86aa9b082d6a1c1dfa6f73dd431d7f14e18",
-    "66370b8c96de7266b02bfe17e696d8a61b587656a34b19fbb0b2768a5305dd1d"
+  var JackpotSignatures: List<ByteArray> = arrayOf(
+    "567617087e0ea8f7bffbc6b48f494438",
+    "d307fabb4a1020e15793f928b67f0ef0a3543c67",
+    "e7ebed91664a9d86ca57a26ea249f9413cca5d4c832bf4d3c6d5f500fd686ea6"
   ).map { it.hexStringToByteArray() },
 
   // md5, sha1, sha256 of libil2cpp.so in binary form
-  val il2CppSignatures: List<ByteArray> = arrayOf(
-    "decfef54eea1292c1e49b7001dcd81fd",
-    "44d7392f3eb8031c0893be19cc22ca868eaab27c",
-    "d57294be9872932b74f4ca5653cdbc8b3fb137df3fa5c9bc86073337745323f4"
-  ).map { it.hexStringToByteArray() },
+  var Il2CppSignatures: List<ByteArray> = arrayOf(
+    "4fc6bb13ee3655fcdbda08dd0114bafe",
+    "b8c29a7b82065a8efaff2a6c669055e4728abefe",
+    "9056823687cd2d2046ff7ae7100f31ae3db0f76ca895113feccb220290085346"
+  ).map { it.hexStringToByteArray() }
+)
+
+class AllStarsClient(
+  val config: AllStarsConfig = AllStarsConfig(),
 
   // this database will store account data and other stuff that needs
   // to persist
@@ -221,7 +235,7 @@ YFMAhTytVk48qO4ViCN3snFs0AURU06niM98MIcEUnj9vj6kOBlOGv4JWQIDAQAB
 
 val kf = KeyFactory.getInstance("RSA")
 val keyBytes = Base64.getDecoder().decode(
-  rsaPublicKey
+  config.RSAPublicKey
     .replace("-----BEGIN PUBLIC KEY-----", "")
     .replace("-----END PUBLIC KEY-----", "")
     .replace("\\s+".toRegex(), "")
@@ -254,7 +268,7 @@ fun hmacSha1(key: ByteArray, data: ByteArray): String {
 // state
 
 var requestId = 0 // incremented after every successful request
-var sessionKey = startupKey.toByteArray()
+var sessionKey = config.StartupKey.toByteArray()
 var randomBytes = Random.nextBytes(32) // regenerated on login/startup
 var flags = 0 // used in call()
 var masterVersion: String? = null // obtained after the first request
@@ -290,7 +304,7 @@ fun call(path: String, payload: String): String {
   println("-> $json")
   val JSON = MediaType.parse("application/json")
   val request = Request.Builder()
-    .url("$serverEndpoint$pathWithQuery")
+    .url("${config.ServerEndpoint}$pathWithQuery")
     .post(RequestBody.create(JSON, json.toByteArray()))
     .build()
   val response = httpClient.newCall(request).execute()
@@ -413,7 +427,7 @@ data class StartupResponse(
 
 fun startup(): StartupResponse? {
   val advertisingId = UUID.randomUUID().toString()
-  val resemara = md5(advertisingId + packageName)
+  val resemara = md5(advertisingId + config.PackageName)
   val timeZone = GregorianCalendar().getTimeZone()
   val offset = timeZone.getRawOffset() / 1000
   val result = call(
@@ -883,9 +897,10 @@ fun assetStateLogGenerateV2(): String {
   val pkgHashChar = 2 - (randomBytes64[0].toInt() and 1)
   val pkgHashType = randomBytes64[pkgHashChar].toInt().rem(3)
   val xoredHashes =
-    jackpotSignatures[libHashType].xor(il2CppSignatures[libHashType])
-      .toHexString()
-  val packageSignature = packageSignatures[pkgHashType]
+    config.JackpotSignatures[libHashType]
+    .xor(config.Il2CppSignatures[libHashType])
+    .toHexString()
+  val packageSignature = config.PackageSignatures[pkgHashType]
   val signatures = when (randomBytes64[0].toInt() and 1) {
     0 -> "$xoredHashes-$packageSignature"
     1 -> "$packageSignature-$xoredHashes"
@@ -2869,9 +2884,262 @@ fun getPushNotificationToken(): String {
   return httpClient.newCall(request).execute().body()!!.string()
 }
 
+fun hashStream(fis: InputStream): List<ByteArray> {
+  val md5 = MessageDigest.getInstance("MD5")
+  val sha1 = MessageDigest.getInstance("SHA-1")
+  val sha256 = MessageDigest.getInstance("SHA-256")
+  val buf = ByteArray(8192)
+  while (true) {
+    val n = fis.read(buf)
+    if (n < 0) break
+    md5.update(buf, 0, n)
+    sha1.update(buf, 0, n)
+    sha256.update(buf, 0, n)
+  }
+  return listOf(
+    md5.digest(),
+    sha1.digest(),
+    sha256.digest()
+  )
+}
+
+fun sha1(path: String): String? {
+  val fis = try { FileInputStream(path) } catch (e: Exception) { null }
+  if (fis == null) return null
+  val digest = MessageDigest.getInstance("SHA-1")
+  val buf = ByteArray(8192)
+  while (true) {
+    val n = fis.read(buf)
+    if (n < 0) break
+    digest.update(buf, 0, n)
+  }
+  return digest.digest().toHexString()
+}
+
+const val apkpure = "https://apkpure.com/%E3%83%A9%E3%83%96%E3%83%A9%E3" +
+  "%82%A4%E3%83%96%EF%BC%81%E3%82%B9%E3%82%AF%E3%83%BC%E3%83%AB%E3%82%A2" +
+  "%E3%82%A4%E3%83%89%E3%83%AB%E3%83%95%E3%82%A7%E3%82%B9%E3%83%86%E3%82" +
+  "%A3%E3%83%90%E3%83%AB-all-stars/com.klab.lovelive.allstars"
+
+val cfduid = List(43) { "abcdef0123456789".random() }.joinToString("")
+
+fun apkPureRequest(url: String, referer: String? = null): Response {
+  var builder = Request.Builder()
+    .url(url)
+    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; " +
+      "rv:70.0) Gecko/20100101 Firefox/70.0")
+    .header("Accept", "text/html,application/xhtml+xml,application/xml;" +
+      "q=0.9,*/*;q=0.8")
+    .header("Accept-Language", "en-US,en;q=0.5")
+    .header("Connection", "keep-alive")
+    .header("Cookie", "__cfduid=$cfduid; apkpure__lang=en")
+    .header("Upgrade-Insecure-Requests", "1")
+  if (referer != null) {
+    builder = builder.header("Referer", referer)
+  }
+  return httpClient.newCall(builder.build()).execute()
+}
+
+const val globalMetadataPath =
+  "assets/bin/Data/Managed/Metadata/global-metadata.dat"
+
+fun readNum(s: InputStream, buf: ByteArray): Int {
+  var total = 0
+  while (total < buf.size) {
+    val n = s.read(buf, total, buf.size - total)
+    if (n < 0) return n
+    total += n
+  }
+  return total
+}
+
+// automatically downloads and extracts endpoint, startup key, hashes
+// from the latest game's apk
+fun getConfigFromRemoteApk(download: Boolean = true): AllStarsConfig {
+  val res = AllStarsConfig()
+  var apkHash: String?
+  var localHash: String?
+  while (true) {
+    println("checking for new apk...")
+    val html = apkPureRequest(url = "$apkpure/versions").body()!!.string()
+    val sha1Matcher = "<strong>File SHA1: </strong>([a-f0-9]+)".toRegex()
+    val hashMatch = sha1Matcher.find(html)!!
+    val (hash) = hashMatch.destructured
+    apkHash = hash
+    localHash = sha1("sifas.xapk")
+    println("remote hash: $apkHash")
+    println(" local hash: $localHash")
+    if (download) {
+      break
+    } else if (localHash == null || localHash != apkHash) {
+      println("update required, waiting for update applet...")
+      Thread.sleep(10000)
+    } else {
+      break
+    }
+  }
+  if (download && (localHash == null || localHash != apkHash)) {
+    val html = apkPureRequest(url = "$apkpure/download?from=versions")
+      .body()!!.string()
+    // sed -n 's_.*\(https://download\.apkpure\.com/[^"]*\).*_\1_p'
+    val urlMatcher =
+      """https://download\.apkpure\.com/b/xapk/[^"]*""".toRegex()
+    val apkUrl = urlMatcher.find(html)!!.value
+    while (true) {
+      println("downloading: $apkUrl")
+      val resp = apkPureRequest(
+        url = apkUrl,
+        referer = "$apkpure/download?from=versions"
+      )
+      val contentLen = resp.header("Content-Length")!!.toInt()
+      val input = BufferedInputStream(resp.body()!!.byteStream())
+      val output = FileOutputStream("sifas.xapk")
+      val buf = ByteArray(8192)
+      var total = 0
+      while (true) {
+        val num = input.read(buf)
+        if (num < 0) { break }
+        total += num
+        output.write(buf, 0, num)
+        val percent = (total.toDouble() / contentLen.toDouble()) * 100.0
+        print("$total/$contentLen " +
+          "%.2f%%                   \r".format(percent))
+      }
+      if (total != contentLen) {
+        println("incomplete download")
+        Thread.sleep(30000)
+        continue
+      }
+      localHash = sha1("sifas.xapk")
+      if (localHash == null || localHash != apkHash) {
+        println("hash still doesn't match, redownloading 10 minutes")
+        Thread.sleep(600000)
+        continue
+      }
+      break
+    }
+  }
+
+  if (download) {
+    return res
+  }
+
+  println("")
+  println("extracting info from apk")
+
+  // TODO: less nesting here
+  val zip = ZipFile(File("sifas.xapk"))
+  for (entry in zip.entries()) {
+    when (entry.getName()) {
+      "com.klab.lovelive.allstars.apk" -> {
+        val zis = ZipInputStream(zip.getInputStream(entry))
+        var innerEntry = zis.getNextEntry()
+        var foundEndpoint = false
+        var foundStartupKey = false
+        while (innerEntry != null && !foundEndpoint && !foundStartupKey) {
+          if (innerEntry.getName() != globalMetadataPath) {
+            innerEntry = zis.getNextEntry()
+            continue
+          }
+          // header
+          var buf = ByteArray(20)
+          var reader = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN)
+          var numBytes = readNum(zis, buf)
+          if (numBytes != buf.size) {
+            println("couldn't read metadata header")
+            return res
+          }
+          if (reader.getInt().toUInt() != 0xFAB11BAF.toUInt()) {
+            println("not a valid metadata file")
+            return res
+          }
+          val version = reader.getInt()
+          val offset = reader.getInt().toLong()
+          val num = reader.getInt() / 8
+          val dataOffset = reader.getInt().toLong()
+          println("metadata version $version")
+          println("$num strings at 0x%08x-0x%08x"
+            .format(offset, offset + num * 8))
+          println("string data at 0x%08x".format(dataOffset))
+          zis.skip(offset - buf.size)
+          // string offsets and lengths
+          buf = ByteArray(num * 8)
+          reader = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN)
+          numBytes = readNum(zis, buf)
+          if (numBytes != buf.size) {
+            println("couldn't read string list ($numBytes/${buf.size})")
+            return res
+          }
+          val strings = MutableList(num) {
+            reader.getInt() to reader.getInt()
+          }
+          strings.sortBy { it.second }
+          // string data
+          zis.skip(dataOffset - offset - buf.size)
+          var prevIndex = 0.toLong()
+          var prevLength = 0.toLong()
+
+          val re = "https://.*.klabgames.net/ep[0-9]+".toRegex()
+          strings.map {
+            val (length, index) = it
+            zis.skip(index.toLong() - prevIndex - prevLength)
+            prevIndex = index.toLong()
+            prevLength = length.toLong()
+            buf = ByteArray(length)
+            numBytes = readNum(zis, buf)
+            if (numBytes != buf.size) {
+              println("couldn't read string data ($numBytes/${buf.size})")
+              return res
+            }
+            val str = buf.toString(Charsets.UTF_8)
+            if (!foundEndpoint) {
+              if (re.matches(str)) {
+                res.ServerEndpoint = str
+                println("endpoint: $str")
+                foundEndpoint = true
+              }
+            } else if (!foundStartupKey) {
+              res.StartupKey = str
+              println("startupKey: $str")
+              foundStartupKey = true
+            }
+          }
+        }
+      }
+      "config.arm64_v8a.apk" -> {
+        val zis = ZipInputStream(zip.getInputStream(entry))
+        var innerEntry = zis.getNextEntry()
+        while (innerEntry != null) {
+          when (innerEntry.getName()) {
+            "lib/arm64-v8a/libil2cpp.so" -> {
+              res.Il2CppSignatures = hashStream(zis)
+              println("il2cpp hashes:")
+              for (x in res.Il2CppSignatures) {
+                println(x.toHexString())
+              }
+            }
+            "lib/arm64-v8a/libjackpot-core.so" -> {
+              res.JackpotSignatures = hashStream(zis)
+              println("libjackpot hashes:")
+              for (x in res.JackpotSignatures) {
+                println(x.toHexString())
+              }
+            }
+            else -> { }
+          }
+          innerEntry = zis.getNextEntry()
+        }
+      }
+      else -> { }
+    }
+  }
+  return res
+}
+
 class Create : CliktCommand(help = "Create account") {
   override fun run() {
     val llas = AllStarsClient(
+      config = getConfigFromRemoteApk(download = false),
       name = generateName(),
       nickname = generateNickname(),
       deviceName = generateDeviceName(),
@@ -2889,7 +3157,10 @@ class Gifts : CliktCommand(
   override fun run() {
     while (true) {
       // we specify a device name to set if the account doesn't have one
-      val llas = AllStarsClient(deviceName = generateDeviceName())
+      val llas = AllStarsClient(
+        config = getConfigFromRemoteApk(download = false),
+        deviceName = generateDeviceName()
+      )
       llas.getStaleAccount()?.let {
         llas.loginAndGetGifts()
       } ?: llas.getIncompleteAccount()?.let {
@@ -2909,10 +3180,20 @@ class Link : CliktCommand(help = "Link a sifid to an account") {
   val password: String by option(help = "sifid.net password")
     .prompt("sifid.net password")
   override fun run() {
-    AllStarsClient().getAccount(id)?.let {
+    AllStarsClient(config = getConfigFromRemoteApk(download = false))
+    .getAccount(id)?.let {
       it.linkSifid(mail = mail, password = password)
     } ?: run {
       println("account $id not found")
+    }
+  }
+}
+
+class Update : CliktCommand(help = "Polls apkpure for updates") {
+  override fun run() {
+    while (true) {
+      getConfigFromRemoteApk()
+      Thread.sleep(60000)
     }
   }
 }
@@ -2921,6 +3202,6 @@ class Todokete : CliktCommand() {
   override fun run() = Unit
 }
 
-fun main(args: Array<String>) = Todokete()
-  .subcommands(Create(), Gifts(), Link())
-  .main(args)
+fun main(args: Array<String>) {
+  Todokete().subcommands(Create(), Gifts(), Link(), Update()).main(args)
+}
