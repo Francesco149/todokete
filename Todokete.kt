@@ -3283,13 +3283,35 @@ class Update : CliktCommand(help = "Polls apkpure for updates") {
     threadLoop(f=update, cooldown=60000)
 }
 
+val createAndGifts: () -> Unit = {
+  // we specify a device name to set if the account doesn't have one
+  val llas = AllStarsClient(
+    config = getConfigFromRemoteApk(download = false),
+    deviceName = generateDeviceName()
+  )
+  llas.getStaleAccount()?.let {
+    llas.loginAndGetGifts()
+  } ?: llas.getIncompleteAccount()?.let {
+    llas.loginAndGetGifts()
+  } ?: run {
+    println("no accounts to be logged, creating new ones")
+    AllStarsClient(
+      config = getConfigFromRemoteApk(download = false),
+      name = generateName(),
+      nickname = generateNickname(),
+      deviceName = generateDeviceName(),
+      deviceToken = getPushNotificationToken(),
+      serviceId = generateServiceId()
+    ).makeAccount()
+  }
+}
+
 class Daemon : CliktCommand(
-  help = "Runs update, create, gift in parallel"
+  help = "Runs update, create+gift in parallel"
 ) {
   override fun run() {
     GlobalScope.launch { threadLoop(f=update, cooldown=60000) }
-    GlobalScope.launch { threadLoop(f=create, cooldown=10000) }
-    GlobalScope.launch { threadLoop(f=gifts, cooldown=10000) }
+    GlobalScope.launch { threadLoop(f=createAndGifts, cooldown=10000) }
     while (true) {
       // TODO: host http server here that lets you query status n shit
       // TODO: redirect verbose log to split files and show simple monitor
