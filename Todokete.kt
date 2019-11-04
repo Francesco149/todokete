@@ -3311,7 +3311,7 @@ class Daemon : CliktCommand(
 ) {
   override fun run() {
     GlobalScope.launch { threadLoop(f=update, cooldown=60000) }
-    GlobalScope.launch { threadLoop(f=createAndGifts, cooldown=10000) }
+    GlobalScope.launch { threadLoop(f=createAndGifts, cooldown=2000) }
     while (true) {
       // TODO: host http server here that lets you query status n shit
       // TODO: redirect verbose log to split files and show simple monitor
