@@ -28,7 +28,7 @@ my build script will automatically download and set up dependencies
 
 ```
 # build and run
-./build.sh | tee -a output.log
+./build.sh daemon | tee -a output.log
 ```
 
 it's recommended to save output to a log as some responses are very large
@@ -79,7 +79,7 @@ and in another cygwin window:
 
 ```
 cd ~/todokete
-./build.sh
+./build.sh daemon
 ```
 
 # client progress

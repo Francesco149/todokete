@@ -25,6 +25,8 @@ import com.google.gson.stream.JsonWriter
 import com.tylerthrailkill.helpers.prettyprint.pp
 import java.io.BufferedInputStream
 import java.io.File
+import java.io.FileReader
+import java.io.PrintStream
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
@@ -49,6 +51,8 @@ import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import kotlin.text.Charsets
 import okhttp3.HttpUrl
 import okhttp3.MediaType
@@ -171,6 +175,9 @@ class JsonMapAdapterFactory : TypeAdapterFactory {
 // ------------------------------------------------------------------------
 
 data class AllStarsConfig(
+  // used by the autoupdater to check the config against the apk
+  var apkHash: String = "",
+
   // first StringLiteral in  ServerConfig$$.cctor
   var ServerEndpoint: String =
   "https://jp-real-prod-v4tadlicuqeeumke.api.game25.klabgames.net/ep1016",
@@ -3016,12 +3023,22 @@ fun readNum(s: InputStream, buf: ByteArray): Int {
 // automatically downloads and extracts endpoint, startup key, hashes
 // from the latest game's apk
 fun getConfigFromRemoteApk(download: Boolean = true): AllStarsConfig {
-  val res = AllStarsConfig()
-  var apkHash: String?
-  var localHash: String?
-  while (true) {
+  if (!download) {
+    while (true) {
+      try {
+        return gson.fromJson(FileReader("config.json"),
+          AllStarsConfig::class.java)
+      } catch (e: Exception) {
+        println("waiting for config.json from the updater thread ...")
+        Thread.sleep(10000.toLong())
+      }
+    }
+  }
+  var localHash: String? = null
+  var apkHash: String? = null
+  while (localHash == null || localHash != apkHash) {
     println("checking for new apk...")
-    val html = apkPureRequest(url = "$apkpure/versions").body()!!.string()
+    var html = apkPureRequest(url = "$apkpure/versions").body()!!.string()
     val sha1Matcher = "<strong>File SHA1: </strong>([a-f0-9]+)".toRegex()
     val hashMatch = sha1Matcher.find(html)!!
     val (hash) = hashMatch.destructured
@@ -3029,60 +3046,58 @@ fun getConfigFromRemoteApk(download: Boolean = true): AllStarsConfig {
     localHash = sha1("sifas.xapk")
     println("remote hash: $apkHash")
     println(" local hash: $localHash")
-    if (download) {
-      break
-    } else if (localHash == null || localHash != apkHash) {
-      println("update required, waiting for update applet...")
-      Thread.sleep(10000)
-    } else {
-      break
-    }
-  }
-  if (download) {
     if (localHash != null && localHash == apkHash) {
-      return res
+      break
     }
-    val html = apkPureRequest(url = "$apkpure/download?from=versions")
+    html = apkPureRequest(url = "$apkpure/download?from=versions")
       .body()!!.string()
     // sed -n 's_.*\(https://download\.apkpure\.com/[^"]*\).*_\1_p'
     val urlMatcher =
       """https://download\.apkpure\.com/b/xapk/[^"]*""".toRegex()
     val apkUrl = urlMatcher.find(html)!!.value
+    println("downloading: $apkUrl")
+    val resp = apkPureRequest(
+      url = apkUrl,
+      referer = "$apkpure/download?from=versions"
+    )
+    val contentLen = resp.header("Content-Length")!!.toInt()
+    val input = BufferedInputStream(resp.body()!!.byteStream())
+    val output = FileOutputStream("sifas.xapk")
+    val buf = ByteArray(8192)
+    var total = 0
     while (true) {
-      println("downloading: $apkUrl")
-      val resp = apkPureRequest(
-        url = apkUrl,
-        referer = "$apkpure/download?from=versions"
-      )
-      val contentLen = resp.header("Content-Length")!!.toInt()
-      val input = BufferedInputStream(resp.body()!!.byteStream())
-      val output = FileOutputStream("sifas.xapk")
-      val buf = ByteArray(8192)
-      var total = 0
-      while (true) {
-        val num = input.read(buf)
-        if (num < 0) { break }
-        total += num
-        output.write(buf, 0, num)
-        val percent = (total.toDouble() / contentLen.toDouble()) * 100.0
-        print("$total/$contentLen " +
-          "%.2f%%                   \r".format(percent))
-      }
-      if (total != contentLen) {
-        println("incomplete download")
-        Thread.sleep(30000)
-        continue
-      }
-      localHash = sha1("sifas.xapk")
-      if (localHash == null || localHash != apkHash) {
-        println("hash still doesn't match, redownloading 10 minutes")
-        Thread.sleep(600000)
-        continue
-      }
-      break
+      val num = input.read(buf)
+      if (num < 0) { break }
+      total += num
+      output.write(buf, 0, num)
+      val percent = (total.toDouble() / contentLen.toDouble()) * 100.0
+      print("$total/$contentLen " +
+        "%.2f%%                   \r".format(percent))
+    }
+    if (total != contentLen) {
+      println("incomplete download")
+      Thread.sleep(30000)
+      continue
+    }
+    localHash = sha1("sifas.xapk")
+    if (localHash == null || localHash != apkHash) {
+      println("hash still doesn't match, redownloading 10 minutes")
+      Thread.sleep(600000)
+      continue
     }
   }
 
+  try {
+    val localConfig = gson.fromJson(FileReader("config.json"),
+      AllStarsConfig::class.java)
+    if (localConfig.apkHash == apkHash) {
+      return localConfig
+    }
+  } catch (e: Exception) {
+    // stfu
+  }
+
+  val res = AllStarsConfig(apkHash = apkHash!!)
   println("")
   println("extracting info from apk")
 
@@ -3192,20 +3207,48 @@ fun getConfigFromRemoteApk(download: Boolean = true): AllStarsConfig {
       else -> { }
     }
   }
+  File("config.json").writeText(gson.toJson(res))
   return res
 }
 
+fun threadLoop(f: () -> Unit, cooldown: Int) {
+  while (true) {
+    try { f() } catch (e: Exception) {
+      println("E: $e")
+    }
+    Thread.sleep(cooldown.toLong())
+  }
+}
+
+val create: () -> Unit  = {
+  val llas = AllStarsClient(
+    config = getConfigFromRemoteApk(download = false),
+    name = generateName(),
+    nickname = generateNickname(),
+    deviceName = generateDeviceName(),
+    deviceToken = getPushNotificationToken(),
+    serviceId = generateServiceId()
+  )
+  llas.makeAccount()
+}
+
 class Create : CliktCommand(help = "Create account") {
-  override fun run() {
-    val llas = AllStarsClient(
-      config = getConfigFromRemoteApk(download = false),
-      name = generateName(),
-      nickname = generateNickname(),
-      deviceName = generateDeviceName(),
-      deviceToken = getPushNotificationToken(),
-      serviceId = generateServiceId()
-    )
-    llas.makeAccount()
+  override fun run() = threadLoop(f=create, cooldown=10000)
+}
+
+val gifts: () -> Unit = {
+  // we specify a device name to set if the account doesn't have one
+  val llas = AllStarsClient(
+    config = getConfigFromRemoteApk(download = false),
+    deviceName = generateDeviceName()
+  )
+  llas.getStaleAccount()?.let {
+    llas.loginAndGetGifts()
+  } ?: llas.getIncompleteAccount()?.let {
+    llas.loginAndGetGifts()
+  } ?: run {
+    println("no accounts that need to be logged in at the moment")
+    Thread.sleep(600000)
   }
 }
 
@@ -3213,23 +3256,7 @@ class Gifts : CliktCommand(
   help = "Log in accounts that haven't been logged in 24+h or that " +
     "haven't completed the tutorial and get gifts"
 ) {
-  override fun run() {
-    while (true) {
-      // we specify a device name to set if the account doesn't have one
-      val llas = AllStarsClient(
-        config = getConfigFromRemoteApk(download = false),
-        deviceName = generateDeviceName()
-      )
-      llas.getStaleAccount()?.let {
-        llas.loginAndGetGifts()
-      } ?: llas.getIncompleteAccount()?.let {
-        llas.loginAndGetGifts()
-      } ?: run {
-        println("no accounts that need to be logged in at the moment")
-        Thread.sleep(600000)
-      }
-    }
-  }
+  override fun run() = threadLoop(f=gifts, cooldown=10000)
 }
 
 class Link : CliktCommand(help = "Link a sifid to an account") {
@@ -3248,11 +3275,25 @@ class Link : CliktCommand(help = "Link a sifid to an account") {
   }
 }
 
+val update: () -> Unit = { getConfigFromRemoteApk() }
+
 class Update : CliktCommand(help = "Polls apkpure for updates") {
+  override fun run() =
+    threadLoop(f=update, cooldown=60000)
+}
+
+class Daemon : CliktCommand(
+  help = "Runs update, create, gift in parallel"
+) {
   override fun run() {
+    GlobalScope.launch { threadLoop(f=update, cooldown=60000) }
+    GlobalScope.launch { threadLoop(f=create, cooldown=10000) }
+    GlobalScope.launch { threadLoop(f=gifts, cooldown=10000) }
     while (true) {
-      getConfigFromRemoteApk()
-      Thread.sleep(60000)
+      // TODO: host http server here that lets you query status n shit
+      // TODO: redirect verbose log to split files and show simple monitor
+      //       in stdout instead
+      Thread.sleep(Long.MAX_VALUE)
     }
   }
 }
@@ -3262,5 +3303,6 @@ class Todokete : CliktCommand() {
 }
 
 fun main(args: Array<String>) {
-  Todokete().subcommands(Create(), Gifts(), Link(), Update()).main(args)
+  Todokete().subcommands(Create(), Gifts(), Link(), Update(), Daemon())
+    .main(args)
 }

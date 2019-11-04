@@ -45,6 +45,7 @@ dep https://repo1.maven.org/maven2/org/slf4j/slf4j-simple/1.6.1/slf4j-simple-1.6
 dep https://repo1.maven.org/maven2/org/slf4j/slf4j-api/1.7.25/slf4j-api-1.7.25.jar 18c4a0095d5c1da6b817592e767bb23d29dd2f560ad74df75ff3961dbde25b79
 dep https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.28.0/sqlite-jdbc-3.28.0.jar 93784e56dbf54625e06c992cf83f70e9c1bddd5c6ad1d3f01308c87b1d961b60
 dep https://repo1.maven.org/maven2/com/github/ajalt/clikt/2.2.0/clikt-2.2.0.jar beb3136d06764ec8ce0810a8fd6c8b7b49d04287d1deef3a07c016e43a458d33
+dep https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.3.2/kotlinx-coroutines-core-1.3.2.jar 9509e8ceba3d4917ec9bbdb74abcfa098d54ab4b86a86b33655ea9837193031d
 
 compile() {
   echo
