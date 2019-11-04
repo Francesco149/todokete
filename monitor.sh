@@ -8,7 +8,8 @@ while true; do
   microtime=$(date +%s%N | cut -b1-13)
   old=$((microtime - 86400000))
   if out=$(sqlite3 todokete.db "
-    select count(*), cast(avg(stars) as int), max(stars), min(stars),
+    select count(*), cast(avg(stars) as int), max(stars),
+      min(case when status >= 24 then stars else 1000000000 end),
       sum(case when lastLogin < $old then 1 else 0 end),
       sum(case when status < 24 then 1 else 0 end)
     from accounts;
