@@ -2,12 +2,13 @@
 
 dir="$(dirname "$0")"
 wdir="$(realpath "$dir")"
-cd "$wdir"
 
 while true; do
   microtime=$(date +%s%N | cut -b1-13)
   old=$((microtime - 86400000))
-  if out=$(sqlite3 todokete.db "
+  if out=$(sqlite3 "file://$wdir/todokete.db?mode=ro" \
+    ".timeout 2000" \
+    "
     select count(*), cast(avg(stars) as int), max(stars),
       min(case when status >= 24 then stars else 1000000000 end),
       sum(case when lastLogin < $old then 1 else 0 end),
