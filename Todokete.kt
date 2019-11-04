@@ -2315,6 +2315,7 @@ public fun getAccount(id: Int): AllStarsClient? {
 }
 
 fun saveItems(m: UserModel) {
+  sqlConnection.setAutoCommit(false)
   sqlSetStars(m.user_status.free_sns_coin)
   sqlSetItems(
     m.user_gacha_ticket_by_ticket_id.map { (k, v) -> k to v.normal_amount }
@@ -2328,6 +2329,8 @@ fun saveItems(m: UserModel) {
     +m.user_accessory_rarity_up_item_by_id.map { (k, v) -> k to v.amount }
     +m.user_live_skip_ticket_by_id.map { (k, v) -> k to v.amount }
   )
+  sqlConnection.commit()
+  sqlConnection.setAutoCommit(true)
 }
 
 fun loginAndCompleteTutorial() {
@@ -2843,7 +2846,6 @@ fun sqlSetItems(items: List<Pair<Int, Int>>) {
   val sql = "insert or replace into items(uid, id, amount) values(?, ?, ?)"
   while (true) {
     try {
-      sqlConnection.setAutoCommit(false)
       val stmt = sqlConnection.prepareStatement(sql)
       items.map{ (k, v) ->
         stmt.setInt(1, userId)
@@ -2852,8 +2854,6 @@ fun sqlSetItems(items: List<Pair<Int, Int>>) {
         stmt.addBatch()
       }
       stmt.executeBatch()
-      sqlConnection.commit()
-      sqlConnection.setAutoCommit(true)
       return
     } catch (e: SQLException) {
       println("sqlite error: $e")
