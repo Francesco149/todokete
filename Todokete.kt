@@ -2328,6 +2328,7 @@ fun saveItems(m: UserModel) {
     +m.user_accessory_level_up_item_by_id.map { (k, v) ->  k to v.amount }
     +m.user_accessory_rarity_up_item_by_id.map { (k, v) -> k to v.amount }
     +m.user_live_skip_ticket_by_id.map { (k, v) -> k to v.amount }
+    +m.user_event_marathon_booster_by_id.map { (k, v) -> k to v.amount }
   )
   sqlConnection.commit()
   sqlConnection.setAutoCommit(true)
@@ -2711,6 +2712,7 @@ init {
   if (sqlVersion()!! < 4) {
     println("[db] migrating to db version 4")
     createItemsTable()
+    sqlSetVersion(4)
     println("[db] done")
   }
 
