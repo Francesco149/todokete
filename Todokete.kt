@@ -2314,6 +2314,22 @@ public fun getAccount(id: Int): AllStarsClient? {
   }
 }
 
+fun saveItems(m: UserModel) {
+  sqlSetStars(m.user_status.free_sns_coin)
+  sqlSetItems(
+    m.user_gacha_ticket_by_ticket_id.map { (k, v) -> k to v.normal_amount }
+    //TODO? +m.user_gacha_point_by_point_id.map { (k, v) -> }
+    +m.user_lesson_enhancing_item_by_item_id.map { (k, v) -> k to v.amount }
+    +m.user_training_material_by_item_id.map { (k, v) -> k to v.amount }
+    +m.user_grade_up_item_by_item_id.map { (k, v) -> k to v.amount }
+    +m.user_recovery_lp_by_id.map { (k, v) -> k to v.amount }
+    +m.user_recovery_ap_by_id.map { (k, v) -> k to v.amount }
+    +m.user_accessory_level_up_item_by_id.map { (k, v) ->  k to v.amount }
+    +m.user_accessory_rarity_up_item_by_id.map { (k, v) -> k to v.amount }
+    +m.user_live_skip_ticket_by_id.map { (k, v) -> k to v.amount }
+  )
+}
+
 fun loginAndCompleteTutorial() {
   // if we get here from makeAccount, we already have a key
   val fetchedData = sqlGetServiceUserCommonKey()?.let {
@@ -2340,6 +2356,7 @@ fun loginAndCompleteTutorial() {
   val loginResponse = login()!!
   sqlIncreaseAuthCount()
   userModel = loginResponse.user_model // TODO: auto update this
+  saveItems(loginResponse.user_model)
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
   sessionKey = loginSessionKey.xor(randomBytes)
   randomDelay(9000)
@@ -2591,7 +2608,8 @@ public fun loginAndGetGifts() {
     randomDelay(5000)
     val presentResponse =
       receivePresent(ids = presents.present_items.map { it.id })!!
-    sqlSetStars(presentResponse.user_model_diff.user_status.free_sns_coin)
+    val model = presentResponse.user_model_diff
+    saveItems(model)
     randomDelay(9000)
     fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
   }
@@ -2600,9 +2618,8 @@ public fun loginAndGetGifts() {
 
 // ------------------------------------------------------------------------
 
-val sqlStatement = DriverManager
-  .getConnection(jdbcPath)
-  .createStatement()
+val sqlConnection = DriverManager.getConnection(jdbcPath)
+val sqlStatement = sqlConnection.createStatement()
 
 fun tableExists(name: String): Boolean =
   sqlQuery("""
@@ -2639,6 +2656,17 @@ fun createAccountsTable() {
   """)
 }
 
+fun createItemsTable() {
+  sqlUpdate("""
+  create table if not exists items(
+    uid integer not null,
+    id integer not null,
+    amount integer not null,
+    primary key (uid, id)
+  )
+  """)
+}
+
 init {
   sqlStatement.setQueryTimeout(30)
 
@@ -2646,7 +2674,8 @@ init {
     println("[db] initializing database")
     createAccountsTable()
     createInfoTable()
-    sqlSetVersion(3)
+    createItemsTable()
+    sqlSetVersion(4)
     println("[db] done")
   } else if (!tableExists("todokete_info")) {
     println("[db] migrating to db version 1")
@@ -2673,6 +2702,12 @@ init {
     sqlUpdate("alter table accounts add sifidMail text")
     sqlUpdate("alter table accounts add sifidPassword text")
     sqlSetVersion(3)
+    println("[db] done")
+  }
+
+  if (sqlVersion()!! < 4) {
+    println("[db] migrating to db version 4")
+    createItemsTable()
     println("[db] done")
   }
 
@@ -2803,6 +2838,29 @@ fun sqlGetDeviceToken(): String? = sqlQueryStringById("deviceToken")
 
 fun sqlGetServiceUserCommonKey(): ByteArray? =
   sqlQueryStringById("serviceUserCommonKey")?.fromBase64()
+
+fun sqlSetItems(items: List<Pair<Int, Int>>) {
+  val sql = "insert or replace into items(uid, id, amount) values(?, ?, ?)"
+  while (true) {
+    try {
+      sqlConnection.setAutoCommit(false)
+      val stmt = sqlConnection.prepareStatement(sql)
+      items.map{ (k, v) ->
+        stmt.setInt(1, userId)
+        stmt.setInt(2, k)
+        stmt.setInt(3, v)
+        stmt.addBatch()
+      }
+      stmt.executeBatch()
+      sqlConnection.commit()
+      sqlConnection.setAutoCommit(true)
+      return
+    } catch (e: SQLException) {
+      println("sqlite error: $e")
+      Thread.sleep(1000)
+    }
+  }
+}
 
 enum class SqlAccountStatus(val value: Int) {
   Startup(1),

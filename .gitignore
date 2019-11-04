@@ -2,3 +2,4 @@
 *.log
 *.db
 node_modules
+texture
