@@ -1,5 +1,7 @@
 *.jar
 *.log
-*.db
+*.db*
 node_modules
 texture
+*.xapk
+config.json

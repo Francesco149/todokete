@@ -225,7 +225,8 @@ class AllStarsClient(
 
   // this database will store account data and other stuff that needs
   // to persist
-  val jdbcPath: String = "jdbc:sqlite:todokete.db",
+  val jdbcPath: String = "jdbc:sqlite:todokete.db" +
+    "?journal_mode=WAL&synchronous=NORMAL&journal_size_limit=500",
 
   // these only need to be set if you're making a new account
   var deviceName: String = "To be filled by O.E.M. To be filled by O.E.M.",

@@ -2,12 +2,13 @@
 
 dir="$(dirname "$0")"
 wdir="$(realpath "$dir")"
+uri="file://$wdir/todokete.db?mode=ro&journal_mode=WAL&synchronous=NORMAL"
+uri="${uri}&journal_size_limit=500"
 
 while true; do
   microtime=$(date +%s%N | cut -b1-13)
   old=$((microtime - 86400000))
-  if out=$(sqlite3 "file://$wdir/todokete.db?mode=ro" \
-    ".timeout 2000" \
+  if out=$(sqlite3 "$uri" ".timeout 2000" \
     "
     select count(*), cast(avg(stars) as int), max(stars),
       min(case when status >= 24 then stars else 1000000000 end),
