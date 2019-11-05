@@ -2616,7 +2616,8 @@ companion object {
   private fun <T> sqlTry(f: () -> T): T {
     while (true) {
       try { return f() } catch (e: SQLException) {
-        println("sqlite error: $e")
+        printException(e)
+        println("retrying...")
         Thread.sleep(1000)
       }
     }
@@ -3078,16 +3079,18 @@ fun getConfigFromRemoteApk(download: Boolean = false): AllStarsConfig {
   return res
 }
 
-inline fun threadLoop(f: () -> Unit, cooldown: Int) {
+fun printException(e: Exception) {
+  val sw = StringWriter()
+  val pw = PrintWriter(sw)
+  pw.print("\u001b[31m")
+  e.printStackTrace(pw)
+  pw.print("\u001b[0m\n")
+  print(sw.toString())
+}
+
+fun threadLoop(f: () -> Unit, cooldown: Int) {
   while (true) {
-    try { f() } catch (e: Exception) {
-      val sw = StringWriter()
-      val pw = PrintWriter(sw)
-      pw.print("\u001b[31m")
-      e.printStackTrace(pw)
-      pw.print("\u001b[0m\n")
-      print(sw.toString())
-    }
+    try { f() } catch (e: Exception) { printException(e) }
     Thread.sleep(cooldown.toLong())
   }
 }
