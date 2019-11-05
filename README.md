@@ -83,14 +83,10 @@ cd ~/todokete
 ```
 
 # client progress
-- [x] store accounts in a database. this is very early and might change
-  significantly as the client takes shape
-- [x] keep track of account tutorial status in case of failed requests,
-  crashes, disconnects, etc
-- [x] resume accounts with incomplete tutorial (not extensively tested)
+- [x] store accounts in a database
 - [x] log in existing accounts
 - [ ] configurable endpoint and other version/region tied things
-- [x] multithread support (theoretically works but not tested)
+- [x] multithread support (only for account creation at the moment)
 - [ ] store full request logs for each account
 - [ ] a way to view and filter all logs combined
 - [ ] proxy support
