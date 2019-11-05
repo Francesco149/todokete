@@ -34,6 +34,7 @@ import java.io.InputStream
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.lang.Thread
+import java.lang.RuntimeException
 import java.lang.reflect.ParameterizedType
 import java.math.BigInteger
 import java.nio.ByteBuffer
@@ -290,13 +291,25 @@ val WithTime = 1 shl 2
 val PrintHeaders = 1 shl 3
 
 fun call(path: String, payload: String): String {
+  while (true) {
+    try {
+      return callNoRetry(path, payload)
+    } catch (e: Exception) {
+      printException(e)
+      println("retrying http...")
+      Thread.sleep(2000)
+    }
+  }
+}
+
+fun callNoRetry(path: String, payload: String): String {
   lastRequestTime = System.currentTimeMillis()
-  requestId += 1
+  val nextRequestId = requestId + 1
   var pathWithQuery = path + "?p=a"
   if ((flags and WithMasterVersion) != 0) {
     pathWithQuery += "&mv=" + masterVersion!!
   }
-  pathWithQuery += "&id=$requestId"
+  pathWithQuery += "&id=$nextRequestId"
   if (userId != 0) {
     pathWithQuery += "&u=$userId"
   }
@@ -315,7 +328,7 @@ fun call(path: String, payload: String): String {
     .build()
   val response = httpClient.newCall(request).execute()
   if (!response.isSuccessful) {
-    println("unexpected code $response")
+    throw RuntimeException("unexpected code $response")
   }
   if ((flags and PrintHeaders) != 0) {
     val headers = response.headers()
@@ -327,6 +340,7 @@ fun call(path: String, payload: String): String {
   }
   val s = response.body()!!.string()
   prettyPrint(s)
+  requestId += 1
   return s
 }
 
@@ -2617,7 +2631,7 @@ companion object {
     while (true) {
       try { return f() } catch (e: SQLException) {
         printException(e)
-        println("retrying...")
+        println("retrying sql...")
         Thread.sleep(1000)
       }
     }
@@ -2815,8 +2829,14 @@ fun generateServiceId(): String {
 fun getPushNotificationToken(): String {
   // TODO: implement firebase messaging in kotlin
   println("waiting for token-generator...")
-  val request = Request.Builder().url("http://127.0.0.1:6969").build()
-  return httpClient.newCall(request).execute().body()!!.string()
+  while (true) {
+    try {
+      val request = Request.Builder().url("http://127.0.0.1:6969").build()
+      return httpClient.newCall(request).execute().body()!!.string()
+    } catch (e: java.net.SocketTimeoutException) {
+      Thread.sleep(1000)
+    }
+  }
 }
 
 fun hashStream(fis: InputStream): List<ByteArray> {
