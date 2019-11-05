@@ -10,10 +10,8 @@ while true; do
   old=$((microtime - 86400000))
   if out=$(sqlite3 "$uri" ".timeout 2000" \
     "
-    select count(*), cast(avg(stars) as int), max(stars),
-      min(case when status >= 24 then stars else 1000000000 end),
-      sum(case when lastLogin < $old then 1 else 0 end),
-      sum(case when status < 24 then 1 else 0 end)
+    select count(*), cast(avg(stars) as int), max(stars), min(stars),
+      sum(case when lastLogin < $old then 1 else 0 end)
     from accounts;
   " 2>/dev/null)
   then
@@ -24,7 +22,6 @@ while true; do
       printf "     max stars: %d\n",$3
       printf "     min stars: %d\n",$4
       printf "stale accounts: %d\n",$5
-      printf "   no tutorial: %d\n",$6
     }'
   fi
   sleep 2

@@ -9,6 +9,7 @@
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.prompt
 import com.github.ajalt.clikt.parameters.types.int
@@ -25,12 +26,13 @@ import com.google.gson.stream.JsonWriter
 import com.tylerthrailkill.helpers.prettyprint.pp
 import java.io.BufferedInputStream
 import java.io.File
-import java.io.FileReader
-import java.io.PrintStream
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.FileReader
 import java.io.IOException
 import java.io.InputStream
+import java.io.PrintWriter
+import java.io.StringWriter
 import java.lang.Thread
 import java.lang.reflect.ParameterizedType
 import java.math.BigInteger
@@ -45,14 +47,14 @@ import java.sql.SQLException
 import java.util.Base64
 import java.util.GregorianCalendar
 import java.util.UUID
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import kotlin.concurrent.thread
 import kotlin.random.Random
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import kotlin.text.Charsets
 import okhttp3.HttpUrl
 import okhttp3.MediaType
@@ -222,20 +224,12 @@ YFMAhTytVk48qO4ViCN3snFs0AURU06niM98MIcEUnj9vj6kOBlOGv4JWQIDAQAB
 
 class AllStarsClient(
   val config: AllStarsConfig = AllStarsConfig(),
-
-  // this database will store account data and other stuff that needs
-  // to persist
-  val jdbcPath: String = "jdbc:sqlite:todokete.db" +
-    "?journal_mode=WAL&synchronous=NORMAL&journal_size_limit=500",
-
   // these only need to be set if you're making a new account
   var deviceName: String = "To be filled by O.E.M. To be filled by O.E.M.",
   val nickname: String = "",
   val name: String = "",
-
-  var deviceToken: String = "",
-  var userId: Int = 0, // obtained after startup, or known before login
-  var serviceId: String = "" // known or generated
+  var deviceToken: String = "", // fcm push notification token
+  var serviceId: String = "" // ideally unique for each account
 ) {
 
 // ------------------------------------------------------------------------
@@ -275,6 +269,7 @@ fun hmacSha1(key: ByteArray, data: ByteArray): String {
 // ------------------------------------------------------------------------
 // state
 
+var userId: Int = 0 // obtained after startup, or known before login
 var requestId = 0 // incremented after every successful request
 var sessionKey = config.StartupKey.toByteArray()
 var randomBytes = Random.nextBytes(32) // regenerated on login/startup
@@ -282,6 +277,9 @@ var flags = 0 // used in call()
 var masterVersion: String? = null // obtained after the first request
 var lastRequestTime: Long = 0
 var userModel: UserModel? = null // TODO: keep this properly updated
+var authCount: Int = 0
+var sifidMail: String? = null
+var sifidPassword: String? = null
 
 // ------------------------------------------------------------------------
 // http client
@@ -889,8 +887,12 @@ data class LiveResume(
 )
 
 data class LoginResponse(
+  // this field is actually for InvalidAuthCountResponse
+  // but theres no easy way to fall back to a different type so i just make
+  // fields for both optional and check for null
+  val authorization_count: Int?,
   val session_key: String,
-  val user_model: UserModel,
+  val user_model: UserModel?,
   val is_platform_service_linked: Boolean,
   val last_timestamp: Int,
   val cautions: List<Int>, // TODO: not sure
@@ -973,7 +975,7 @@ fun login(): LoginResponse? {
     path = "/login/login",
     payload = gson.toJson(LoginRequest(
       user_id = userId,
-      auth_count = sqlAuthCount()!!,
+      auth_count = authCount + 1,
       mask = generateMask(),
       asset_state = assetStateLogGenerateV2()
     ))
@@ -2150,12 +2152,201 @@ public fun makeAccount() {
   fetchGameServiceDataBeforeLogin()!!
   randomDelay(1000)
   val startupResponse = startup()!!
-  sqlNewAccount()
   val authKey = base64Decoder.decode(startupResponse.authorization_key)
   sessionKey = authKey.xor(randomBytes)
-  sqlSetServiceUserCommonKey(sessionKey)
   randomDelay(2000)
-  loginAndGetGifts()
+  performLogin()
+  randomDelay(9000)
+  var terms = userModel!!.user_status.terms_of_use_version
+  if (terms == 0) terms = 1 // TODO: is this how it works?
+  termsAgreement(terms)!!
+  randomDelay(9000)
+  setUserProfile(name = generateName())!!
+  randomDelay(9000)
+  setUserProfile(nickname = generateNickname())!!
+  randomDelay(4000)
+  setUserProfileBirthDay()!!
+  randomDelay(10000)
+  finishUserStoryMain(cellId = 1001)!!
+  randomDelay(1000)
+  var startLiveResponse = startLive(
+    liveDifficultyId = 30001301,
+    cellId = 1002,
+    deckId = 1
+  )!!
+  randomDelay(4000)
+  saveRuleDescription(ids = listOf(1))!!
+  randomDelay(4000)
+  skipLive(
+    live = startLiveResponse.live,
+    stamina = 6578, // TODO: calc these
+    power = 1040,
+    targetScore = 35000
+  )!!
+  randomDelay(10000)
+  finishUserStoryMain(cellId = 1003)!!
+  startLiveResponse = startLive(
+    liveDifficultyId = 31007301,
+    cellId = 1004,
+    deckId = 2
+  )!!
+  randomDelay(4000)
+  saveRuleDescription(ids = listOf(2))!!
+  randomDelay(4000)
+  skipLive(
+    live = startLiveResponse.live,
+    stamina = 5812,
+    power = 1047,
+    targetScore = 40000
+  )!!
+  randomDelay(10000)
+  setFavoriteMember(id = 1)!!
+  randomDelay(4000)
+  fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+  randomDelay(10000)
+  tapLovePoint(memberMasterId = 1)!!
+  randomDelay(4000)
+  saveUserNaviVoice(ids = listOf(100010004))!!
+  randomDelay(8000)
+  fetchTrainingTree(cardMasterId = 100012001)!!
+  randomDelay(8000)
+  levelUpCard(cardMasterId = 100012001)!!
+  randomDelay(8000)
+  activateTrainingTreeCell(
+    cardMasterId = 100012001,
+    cellMasterIds =
+      listOf(17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+  )!!
+  randomDelay(30000)
+  finishUserStorySide(masterId = 1000120011)!!
+  randomDelay(8000)
+  updateCardNewFlag(masterIds = listOf(100012001))!!
+  randomDelay(8000)
+  // TODO: do I need to hardcode this? is there any way to generate it?
+  // what does cardWithSuit mean? why do the squad id's start from 101?
+  var userModelResponse = saveLiveDeckAll(
+    deckId = 1,
+    cardWithSuit = mapOf(
+      100012001 to null,
+      102071001 to null,
+      102081001 to null,
+      101031001 to null,
+      101061001 to null,
+      101051001 to null,
+      100051001 to null,
+      100051001 to null,
+      100091001 to 100091001,
+      100081001 to 100081001
+    ),
+    squad = mapOf(
+      101 to LiveSquad(listOf(100012001, 101061001, 101051001)),
+      102 to LiveSquad(listOf(102081001, 101031001, 100051001)),
+      103 to LiveSquad(listOf(102071001, 100091001, 100081001))
+    )
+  )!!
+  // TODO: smarter way to update userModel?
+  var delta = userModelResponse.user_model
+  userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
+  userModel!!.user_live_party_by_id = delta.user_live_party_by_id
+  randomDelay(8000)
+  userModelResponse = saveSuit(
+    deckId = 1,
+    cardIndex = 1,
+    suitMasterId = 100012001
+  )!!
+  delta = userModelResponse.user_model
+  userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
+  randomDelay(8000)
+  fetchLivePartners()!!
+  randomDelay(8000)
+  startLiveResponse = startLive(
+    liveDifficultyId = 31001101,
+    cellId = 1005,
+    deckId = 1
+  )!!
+  randomDelay(8000)
+  skipLive(
+    live = startLiveResponse.live,
+    stamina = 7491,
+    power = 1341,
+    targetScore = 50000
+  )!!
+  randomDelay(10000)
+  fetchGachaMenu()!!
+  randomDelay(4000)
+  drawGacha(id = 1)!!
+  randomDelay(15000)
+  fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+  randomDelay(10000)
+  tutorialPhaseEnd()!!
+  fetchGameServiceData()!!
+  linkGameService()!!
+  getGiftsAndCommitAccount()
+}
+
+fun performLogin() {
+  var loginResponse = login()!!
+  if (loginResponse.user_model == null) {
+    // InvalidAuthCountResponse, sync with what server claims
+    authCount = loginResponse.authorization_count!!
+    loginResponse = login()!!
+  }
+  val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
+  sessionKey = loginSessionKey.xor(randomBytes)
+  userModel = loginResponse.user_model
+  // TODO: better tracking of userModel changes
+}
+
+fun getGiftsAndCommitAccount() {
+  randomDelay(9000)
+  fetchGameServiceData()!!
+  var bstrapResponse =
+    fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
+  // TODO: figure out what type are comeback, event_3d and birthday bonuses
+  bstrapResponse.fetch_bootstrap_login_bonus_response?.let {
+    for (bonus in it.event_2d_login_bonuses) {
+      randomDelay(5000)
+      readLoginBonus(type = 3, id = bonus.login_bonus_id)!!
+    }
+    for (bonus in it.beginner_login_bonuses) {
+      randomDelay(5000)
+      readLoginBonus(type = 2, id = bonus.login_bonus_id)!!
+    }
+    for (bonus in it.login_bonuses) {
+      randomDelay(5000)
+      readLoginBonus(type = 1, id = bonus.login_bonus_id)!!
+    }
+  }
+  // TODO: should these be removed after the first time?
+  saveUserNaviVoice(ids = listOf(100010123, 100010113))!!
+  bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+  bstrapResponse
+    .fetch_bootstrap_notice_response?.super_notices?.lastOrNull()?.let {
+      fetchNoticeDetail(id = it.notice_id)!!
+    }
+  fetchNotice()!!
+  randomDelay(2000)
+  saveUserNaviVoice(ids = listOf(100010046))!!
+  val presents = fetchPresent()!!
+  if (presents.present_items.size > 0) {
+    randomDelay(2000)
+    saveRuleDescription(ids = listOf(20))!! // TODO: necessary?
+    randomDelay(5000)
+    val presentResponse =
+      receivePresent(ids = presents.present_items.map { it.id })!!
+    userModel = presentResponse.user_model_diff
+    randomDelay(9000)
+    fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
+  }
+  commitAccount()
+}
+
+// login, complete tutorial if incomplete and get gifts
+// - if deviceName is set and the account has no deviceName, it will be
+//   associated to this deviceName
+public fun loginAndGetGifts() {
+  performLogin()
+  getGiftsAndCommitAccount()
 }
 
 var sifidSession = ""
@@ -2214,7 +2405,7 @@ fun sifidRequest(
 // login, complete tutorial, get gifts and associate a sif id with this acc
 // returns success
 public fun linkSifid(mail: String, password: String): Boolean {
-  loginAndCompleteTutorial()
+  performLogin()
   getClearedPlatformAchievement()!!
   randomDelay(4000)
   fetchSchoolIdolFestivalIdReward()!!
@@ -2272,7 +2463,9 @@ public fun linkSifid(mail: String, password: String): Boolean {
     return false
   }
   linkSchoolIdolFestivalId()!!
-  sqlSetSifid(mail = mail, password = password)
+  sifidMail = mail
+  sifidPassword = password
+  commitAccount()
   return true
 }
 
@@ -2280,633 +2473,306 @@ public fun linkSifid(mail: String, password: String): Boolean {
 // then sets up the client to log it in. returns self
 public fun getStaleAccount(hoursAgo: Long = 24): AllStarsClient? {
   val old = System.currentTimeMillis() - 3600000.toLong() * hoursAgo
-  val rowSet = sqlQuery("""
-  select id, serviceId from accounts
-  where lastLogin < $old
-  """)
-  if (rowSet.next()) {
-    serviceId = rowSet.getString("serviceId")
-    userId = rowSet.getInt("id")
-    return this
-  }
-  return null
-}
-
-// picks a random account that hasn't fully completed the tutorial
-// and hasn't been touched in >1h, then sets up the client to log it in.
-// returns self
-public fun getIncompleteAccount(): AllStarsClient? {
-  // crappy way to avoid conflicting with parallel account creation.
-  // assuming it never gets stuck for >1h
-  // TODO: more reliable way to avoid competition between create/login
-  val old = System.currentTimeMillis() - 3600000.toLong()
-  val rowSet = sqlQuery("""
-  select id, serviceId from accounts
-  where status < ${SqlAccountStatus.LinkGameService.value}
-  and lastLogin < $old
-  """)
-  if (rowSet.next()) {
-    serviceId = rowSet.getString("serviceId")
-    userId = rowSet.getInt("id")
-    return this
-  }
-  return null
+  return sqlLoadAccount("lastLogin < $old")
 }
 
 // load account by id and set up the client to log it in. returns self
-public fun getAccount(id: Int): AllStarsClient? {
-  userId = id
-  return sqlGetServiceId()?.let {
-    serviceId = it
-    this
-  }
-}
+public fun getAccount(id: Int): AllStarsClient? =
+  sqlLoadAccount("id = $id")
 
-fun saveItems(m: UserModel) {
-  sqlConnection.setAutoCommit(false)
-  sqlSetStars(m.user_status.free_sns_coin)
-  sqlSetItems(
-    m.user_gacha_ticket_by_ticket_id.map { (k, v) -> k to v.normal_amount }
-    //TODO? +m.user_gacha_point_by_point_id.map { (k, v) -> }
-    +m.user_lesson_enhancing_item_by_item_id.map { (k, v) -> k to v.amount }
-    +m.user_training_material_by_item_id.map { (k, v) -> k to v.amount }
-    +m.user_grade_up_item_by_item_id.map { (k, v) -> k to v.amount }
-    +m.user_recovery_lp_by_id.map { (k, v) -> k to v.amount }
-    +m.user_recovery_ap_by_id.map { (k, v) -> k to v.amount }
-    +m.user_accessory_level_up_item_by_id.map { (k, v) ->  k to v.amount }
-    +m.user_accessory_rarity_up_item_by_id.map { (k, v) -> k to v.amount }
-    +m.user_live_skip_ticket_by_id.map { (k, v) -> k to v.amount }
-    +m.user_event_marathon_booster_by_id.map { (k, v) -> k to v.amount }
+fun commitAccount() =
+  sqlCommitAccount(
+    userId = userId,
+    serviceId = serviceId,
+    deviceToken = deviceToken,
+    deviceName = deviceName,
+    authCount = authCount + 1,
+    sessionKey = sessionKey,
+    sifidMail = sifidMail,
+    sifidPassword = sifidPassword,
+    userModel = userModel!!
   )
-  sqlConnection.commit()
-  sqlConnection.setAutoCommit(true)
-}
-
-fun loginAndCompleteTutorial() {
-  // if we get here from makeAccount, we already have a key
-  val fetchedData = sqlGetServiceUserCommonKey()?.let {
-    sessionKey = it
-    false
-  } ?: run {
-    // this should never happen because makeAccount stores the key
-    // but it can be useful if we somehow lose the key and have the service
-    // id linked
-    userId = 0 // workaround to avoid u= in this request
-    val fetchResponse = fetchGameServiceDataBeforeLogin()!!
-    fetchResponse.data!!.linked_data.let {
-      sessionKey = it.service_user_common_key
-      userId = it.user_id
-      sqlSetServiceUserCommonKey(it.service_user_common_key)
-    }
-    true
-  }
-  // just in case we're lacking a device name somehow
-  sqlGetDeviceName()?.let { deviceName = it }
-  ?: run { sqlSetDeviceName(deviceName) }
-  // TODO: is device token empty or null when there's no google services?
-  sqlGetDeviceToken()?.let { deviceToken = it }
-  val loginResponse = login()!!
-  sqlIncreaseAuthCount()
-  userModel = loginResponse.user_model // TODO: auto update this
-  saveItems(loginResponse.user_model)
-  val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
-  sessionKey = loginSessionKey.xor(randomBytes)
-  randomDelay(9000)
-  if (!fetchedData && sqlStatus()!! >= SqlAccountStatus.LinkGameService) {
-    // from my observations, this is only sent when we already have a key
-    val fetchResponse = fetchGameServiceData()!!
-    sqlSetServiceUserCommonKey(fetchResponse.data.service_user_common_key)
-  }
-  while (tutorialStep()) { }
-}
-
-fun tutorialStep(): Boolean {
-  val status = sqlStatus()!!
-  when (status) {
-    SqlAccountStatus.Startup -> {
-      var terms = userModel!!.user_status.terms_of_use_version
-      if (terms == 0) terms = 1 // TODO: is this how it works?
-      termsAgreement(terms)!!
-      sqlSetStatus(SqlAccountStatus.TermsAgreement)
-      randomDelay(9000)
-    }
-    SqlAccountStatus.TermsAgreement -> {
-      setUserProfile(name = generateName())!!
-      sqlSetStatus(SqlAccountStatus.SetName)
-      randomDelay(9000)
-    }
-    SqlAccountStatus.SetName -> {
-      setUserProfile(nickname = generateNickname())!!
-      sqlSetStatus(SqlAccountStatus.SetNickName)
-      randomDelay(4000)
-    }
-    SqlAccountStatus.SetNickName -> {
-      setUserProfileBirthDay()!!
-      sqlSetStatus(SqlAccountStatus.SetBirthDay)
-      randomDelay(10000)
-    }
-    SqlAccountStatus.SetBirthDay -> {
-      finishUserStoryMain(cellId = 1001)!!
-      sqlSetStatus(SqlAccountStatus.Story1001)
-      randomDelay(1000)
-    }
-    SqlAccountStatus.Story1001, SqlAccountStatus.RuleDescription1 -> {
-      var startLiveResponse = startLive(
-        liveDifficultyId = 30001301,
-        cellId = 1002,
-        deckId = 1
-      )!!
-      randomDelay(4000)
-      if (status < SqlAccountStatus.RuleDescription1) {
-        saveRuleDescription(ids = listOf(1))!!
-        sqlSetStatus(SqlAccountStatus.RuleDescription1)
-        randomDelay(4000)
-      }
-      skipLive(
-        live = startLiveResponse.live,
-        stamina = 6578, // TODO: calc these
-        power = 1040,
-        targetScore = 35000
-      )!!
-      sqlSetStatus(SqlAccountStatus.Live30001301)
-      randomDelay(10000)
-    }
-    SqlAccountStatus.Live30001301 -> {
-      finishUserStoryMain(cellId = 1003)!!
-      sqlSetStatus(SqlAccountStatus.Story1003)
-    }
-    SqlAccountStatus.Story1003, SqlAccountStatus.RuleDescription2 -> {
-      val startLiveResponse = startLive(
-        liveDifficultyId = 31007301,
-        cellId = 1004,
-        deckId = 2
-      )!!
-      randomDelay(4000)
-      if (status < SqlAccountStatus.RuleDescription2) {
-        saveRuleDescription(ids = listOf(2))!!
-        sqlSetStatus(SqlAccountStatus.RuleDescription2)
-        randomDelay(4000)
-      }
-      skipLive(
-        live = startLiveResponse.live,
-        stamina = 5812,
-        power = 1047,
-        targetScore = 40000
-      )!!
-      sqlSetStatus(SqlAccountStatus.Live31007301)
-      randomDelay(10000)
-    }
-    SqlAccountStatus.Live31007301 -> {
-      setFavoriteMember(id = 1)!!
-      sqlSetStatus(SqlAccountStatus.SetFavoriteMember)
-      randomDelay(4000)
-    }
-    SqlAccountStatus.SetFavoriteMember -> {
-      fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
-      randomDelay(10000)
-      tapLovePoint(memberMasterId = 1)!!
-      sqlSetStatus(SqlAccountStatus.TapLovePoint)
-      randomDelay(4000)
-    }
-    SqlAccountStatus.TapLovePoint -> {
-      saveUserNaviVoice(ids = listOf(100010004))!!
-      sqlSetStatus(SqlAccountStatus.NaviVoice100010004)
-      randomDelay(8000)
-    }
-    SqlAccountStatus.NaviVoice100010004 -> {
-      fetchTrainingTree(cardMasterId = 100012001)!!
-      randomDelay(8000)
-      levelUpCard(cardMasterId = 100012001)!!
-      sqlSetStatus(SqlAccountStatus.LevelUpCard)
-      randomDelay(8000)
-    }
-    SqlAccountStatus.LevelUpCard -> {
-      activateTrainingTreeCell(
-        cardMasterId = 100012001,
-        cellMasterIds =
-          listOf(17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-      )!!
-      sqlSetStatus(SqlAccountStatus.Training)
-      randomDelay(30000)
-    }
-    SqlAccountStatus.Training -> {
-      finishUserStorySide(masterId = 1000120011)!!
-      sqlSetStatus(SqlAccountStatus.StorySide)
-      randomDelay(8000)
-    }
-    SqlAccountStatus.StorySide -> {
-      updateCardNewFlag(masterIds = listOf(100012001))!!
-      sqlSetStatus(SqlAccountStatus.NewFlag)
-      randomDelay(8000)
-    }
-    SqlAccountStatus.NewFlag -> {
-      // TODO: do I need to hardcode this? is there any way to generate it?
-      // what does cardWithSuit mean? why do the squad id's start from 101?
-      val userModelResponse = saveLiveDeckAll(
-        deckId = 1,
-        cardWithSuit = mapOf(
-          100012001 to null,
-          102071001 to null,
-          102081001 to null,
-          101031001 to null,
-          101061001 to null,
-          101051001 to null,
-          100051001 to null,
-          100051001 to null,
-          100091001 to 100091001,
-          100081001 to 100081001
-        ),
-        squad = mapOf(
-          101 to LiveSquad(listOf(100012001, 101061001, 101051001)),
-          102 to LiveSquad(listOf(102081001, 101031001, 100051001)),
-          103 to LiveSquad(listOf(102071001, 100091001, 100081001))
-        )
-      )!!
-      sqlSetStatus(SqlAccountStatus.SaveLiveDeck)
-      // TODO: smarter way to update userModel?
-      var delta = userModelResponse.user_model
-      userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
-      userModel!!.user_live_party_by_id = delta.user_live_party_by_id
-      randomDelay(8000)
-    }
-    SqlAccountStatus.SaveLiveDeck -> {
-      val userModelResponse = saveSuit(
-        deckId = 1,
-        cardIndex = 1,
-        suitMasterId = 100012001
-      )!!
-      sqlSetStatus(SqlAccountStatus.SaveSuit)
-      val delta = userModelResponse.user_model
-      userModel!!.user_live_deck_by_id = delta.user_live_deck_by_id
-      randomDelay(8000)
-    }
-    SqlAccountStatus.SaveSuit -> {
-      fetchLivePartners()!!
-      randomDelay(8000)
-      val startLiveResponse = startLive(
-        liveDifficultyId = 31001101,
-        cellId = 1005,
-        deckId = 1
-      )!!
-      randomDelay(8000)
-      skipLive(
-        live = startLiveResponse.live,
-        stamina = 7491,
-        power = 1341,
-        targetScore = 50000
-      )!!
-      sqlSetStatus(SqlAccountStatus.Live31001101)
-      randomDelay(10000)
-    }
-    SqlAccountStatus.Live31001101 -> {
-      fetchGachaMenu()!!
-      randomDelay(4000)
-      drawGacha(id = 1)!!
-      sqlSetStatus(SqlAccountStatus.DrawGacha)
-      randomDelay(15000)
-    }
-    SqlAccountStatus.DrawGacha -> {
-      fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
-      randomDelay(10000)
-      tutorialPhaseEnd()!!
-      sqlSetStatus(SqlAccountStatus.TutorialEnd)
-    }
-    SqlAccountStatus.TutorialEnd -> {
-      fetchGameServiceData()!!
-      linkGameService()!!
-      sqlSetStatus(SqlAccountStatus.LinkGameService)
-    }
-    SqlAccountStatus.LinkGameService -> return false
-  }
-  return true
-}
-
-// login, complete tutorial if incomplete and get gifts
-// - if deviceName is set and the account has no deviceName, it will be
-//   associated to this deviceName
-public fun loginAndGetGifts() {
-  loginAndCompleteTutorial()
-  var bstrapResponse =
-    fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
-  // TODO: figure out what type are comeback, event_3d and birthday bonuses
-  bstrapResponse.fetch_bootstrap_login_bonus_response?.let {
-    for (bonus in it.event_2d_login_bonuses) {
-      randomDelay(5000)
-      readLoginBonus(type = 3, id = bonus.login_bonus_id)!!
-    }
-    for (bonus in it.beginner_login_bonuses) {
-      randomDelay(5000)
-      readLoginBonus(type = 2, id = bonus.login_bonus_id)!!
-    }
-    for (bonus in it.login_bonuses) {
-      randomDelay(5000)
-      readLoginBonus(type = 1, id = bonus.login_bonus_id)!!
-    }
-  }
-  // TODO: should these be removed after the first time?
-  saveUserNaviVoice(ids = listOf(100010123, 100010113))!!
-  bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
-  bstrapResponse
-    .fetch_bootstrap_notice_response?.super_notices?.lastOrNull()?.let {
-      fetchNoticeDetail(id = it.notice_id)!!
-    }
-  fetchNotice()!!
-  randomDelay(2000)
-  saveUserNaviVoice(ids = listOf(100010046))!!
-  val presents = fetchPresent()!!
-  if (presents.present_items.size > 0) {
-    randomDelay(2000)
-    saveRuleDescription(ids = listOf(20))!! // TODO: necessary?
-    randomDelay(5000)
-    val presentResponse =
-      receivePresent(ids = presents.present_items.map { it.id })!!
-    val model = presentResponse.user_model_diff
-    saveItems(model)
-    randomDelay(9000)
-    fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
-  }
-  sqlTouchLastLogin()
-}
 
 // ------------------------------------------------------------------------
 
-val sqlConnection = DriverManager.getConnection(jdbcPath)
-val sqlStatement = sqlConnection.createStatement()
-
-fun tableExists(name: String): Boolean =
-  sqlQuery("""
-    select name
-    from sqlite_master
-    where type='table' and name='$name'
-  """).next()
-
-fun createInfoTable() {
-  sqlUpdate("""
-  create table todokete_info(
-    key text primary key,
-    intValue integer,
-    stringValue text
-  )
+fun sqlLoadAccount(wherePart: String): AllStarsClient? {
+  val s = sqlQuery("""
+  select id, serviceId, authCount, deviceToken, deviceName,
+  sessionKey, sifidMail, sifidPassword
+  from accounts where $wherePart
   """)
+  if (!s.next()) {
+    return null
+  }
+  userId = s.getInt("id")
+  serviceId = s.getString("serviceId")
+  authCount = s.getInt("authCount")
+  deviceToken = s.getString("deviceToken")
+  deviceName = s.getString("deviceName")
+  sessionKey = s.getString("sessionKey").fromBase64()
+  sifidMail = s.getString("sifidMail")
+  sifidPassword = s.getString("sifidPassword")
+  return this
 }
 
-fun createAccountsTable() {
-  sqlUpdate("""
-  create table if not exists accounts(
-    id integer primary key,
-    serviceId char[22] not null,
-    authCount integer not null,
-    stars integer,
-    lastLogin integer not null,
-    status integer not null,
-    deviceToken char[154],
-    deviceName text,
-    serviceUserCommonKey char[44],
-    sifidMail text,
-    sifidPassword text
-  )
-  """)
-}
-
-fun createItemsTable() {
-  sqlUpdate("""
-  create table if not exists items(
-    uid integer not null,
-    id integer not null,
-    amount integer not null,
-    primary key (uid, id)
-  )
-  """)
-}
-
-init {
-  sqlStatement.setQueryTimeout(30)
-
-  if (!tableExists("accounts")) {
-    println("[db] initializing database")
-    createAccountsTable()
-    createInfoTable()
-    createItemsTable()
-    sqlSetVersion(4)
-    println("[db] done")
-  } else if (!tableExists("todokete_info")) {
-    println("[db] migrating to db version 1")
-    createInfoTable()
-    sqlUpdate("alter table accounts add deviceName text")
-    sqlUpdate("alter table accounts add serviceUserCommonKey char[44]")
-    sqlSetVersion(1)
-    println("[db] done")
-  }
-
-  if (sqlVersion()!! < 2) {
-    println("[db] migrating to db version 2")
-    sqlUpdate("delete from accounts where lastLogin is null")
-    sqlUpdate("alter table accounts rename to accounts_old")
-    createAccountsTable()
-    sqlUpdate("insert into accounts select * from accounts_old")
-    sqlUpdate("drop table accounts_old")
-    sqlSetVersion(2)
-    println("[db] done")
-  }
-
-  if (sqlVersion()!! < 3) {
-    println("[db] migrating to db version 3")
-    sqlUpdate("alter table accounts add sifidMail text")
-    sqlUpdate("alter table accounts add sifidPassword text")
-    sqlSetVersion(3)
-    println("[db] done")
-  }
-
-  if (sqlVersion()!! < 4) {
-    println("[db] migrating to db version 4")
-    createItemsTable()
-    sqlSetVersion(4)
-    println("[db] done")
-  }
-
-  // early versions did not store the startup key so accounts that didn't
-  // complete the tutorial and link to their service id are unrecoverable
-  sqlUpdate("""
-  delete from accounts
-  where status < ${SqlAccountStatus.LinkGameService.value}
-  and serviceUserCommonKey is null
-  """)
-}
-
-fun sqlVersion(): Int? {
-  val rowSet = sqlQuery(
-    "select intValue from todokete_info where key = 'version'"
-  )
-  if (rowSet.next()) {
-    return rowSet.getInt("intValue")
-  }
-  return null
-}
-
-fun sqlSetVersion(x: Int) =
-  sqlUpdate("update todokete_info set intValue = $x where key = 'version'")
-
-fun sqlUpdate(sql: String) {
-  while (true) {
-    try {
-      sqlStatement.executeUpdate(sql)
-      return
-    } catch (e: SQLException) {
-      println("sqlite error: $e")
-      Thread.sleep(1000)
+companion object {
+  fun sqlCommitAccount(
+    userId: Int,
+    serviceId: String,
+    authCount: Int,
+    deviceName: String,
+    deviceToken: String,
+    sessionKey: ByteArray,
+    sifidMail: String?,
+    sifidPassword: String?,
+    userModel: UserModel
+  ) = sqlQueue!!.add { sqlTry<Unit> {
+    val m = userModel
+    var sql = """
+      insert or replace into accounts(
+        id, serviceId, authCount, stars, lastLogin, deviceToken, deviceName,
+        sessionKey, sifidMail, sifidPassword
+      )
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    var stmt = sqlConnection.prepareStatement(sql)
+    stmt.setInt(1, userId)
+    stmt.setString(2, serviceId)
+    stmt.setInt(3, authCount)
+    stmt.setInt(4, userModel.user_status.free_sns_coin)
+    stmt.setLong(5, System.currentTimeMillis())
+    stmt.setString(6, deviceToken)
+    stmt.setString(7, deviceName)
+    stmt.setString(8, sessionKey.toBase64())
+    stmt.setString(9, sifidMail)
+    stmt.setString(10, sifidPassword)
+    stmt.addBatch()
+    stmt.execute()
+    val items = (
+      m.user_gacha_ticket_by_ticket_id.map {
+        (k, v) -> k to v.normal_amount
+      } +
+      // TODO? m.user_gacha_point_by_point_id.map { (k, v) -> } +
+      m.user_lesson_enhancing_item_by_item_id.map
+        { (k, v) -> k to v.amount
+      } +
+      m.user_training_material_by_item_id.map { (k, v) -> k to v.amount } +
+      m.user_grade_up_item_by_item_id.map { (k, v) -> k to v.amount } +
+      m.user_recovery_lp_by_id.map { (k, v) -> k to v.amount } +
+      m.user_recovery_ap_by_id.map { (k, v) -> k to v.amount } +
+      m.user_accessory_level_up_item_by_id.map {
+        (k, v) -> k to v.amount
+      } +
+      m.user_accessory_rarity_up_item_by_id.map {
+        (k, v) -> k to v.amount
+      } +
+      m.user_live_skip_ticket_by_id.map { (k, v) -> k to v.amount } +
+      m.user_event_marathon_booster_by_id.map { (k, v) -> k to v.amount }
+    )
+    sql = "insert or replace into items(uid, id, amount) values(?, ?, ?)"
+    stmt = sqlConnection.prepareStatement(sql)
+    items.map { (k, v) ->
+      stmt.setInt(1, userId)
+      stmt.setInt(2, k)
+      stmt.setInt(3, v)
+      stmt.addBatch()
     }
-  }
-}
+    stmt.executeBatch()
+    sqlConnection.commit()
+  } }
 
-fun sqlUpdateById(sql: String) =
-  sqlUpdate("update accounts $sql where id = $userId")
-
-fun sqlQuery(sql: String): ResultSet {
-  while (true) {
-    try {
-      return sqlStatement.executeQuery(sql)
-    } catch (e: SQLException) {
-      println("sqlite error: $e")
-      Thread.sleep(1000)
-    }
-  }
-}
-
-fun sqlQueryById(sql: String = "*") =
-  sqlQuery("select $sql from accounts where id = $userId")
-
-fun sqlQueryIntById(field: String): Int? {
-  val rowSet = sqlQueryById(field)
-  if (rowSet.next()) {
-    return rowSet.getInt(field)
-  }
-  return null
-}
-
-fun sqlQueryStringById(field: String): String? {
-  val rowSet = sqlQueryById(field)
-  if (rowSet.next()) {
-    return rowSet.getString(field)
-  }
-  return null
-}
-
-fun sqlNewAccount() {
-  val time = System.currentTimeMillis()
-  val startup = SqlAccountStatus.Startup.value
-  sqlUpdate("""
-  insert into
-    accounts(id, serviceId, status, authCount, deviceToken, deviceName,
-      lastLogin)
-    values($userId, '$serviceId', $startup, 1, '$deviceToken',
-      '$deviceName', $time)
-  """)
-}
-
-fun sqlIncreaseAuthCount() {
-  sqlUpdateById("set authCount = authCount + 1")
-}
-
-fun sqlTouchLastLogin() {
-  val time = System.currentTimeMillis()
-  sqlUpdateById("set lastLogin = $time")
-}
-
-fun sqlAuthCount(): Int? = sqlQueryIntById("authCount")
-
-fun sqlStatus(): SqlAccountStatus? {
-  sqlQueryIntById("status")?.let { return SqlAccountStatus.fromInt(it) }
-  return null
-}
-
-fun sqlSetStatus(status: SqlAccountStatus) {
-  val value = status.value
-  sqlUpdateById("set status = $value")
-}
-
-fun sqlSetStars(stars: Int) = sqlUpdateById("set stars = $stars")
-
-fun sqlSetDeviceName(value: String) =
-  sqlUpdateById("set deviceName = '$value'")
-
-fun sqlSetSifid(mail: String, password: String) =
-  sqlUpdateById("set sifidMail = '$mail', sifidPassword = '$password'")
-
-fun sqlGetSifid(): Pair<String?, String?>? {
-  val rowSet = sqlQueryById("sifidMail, sifidPassword")
-  if (rowSet.next()) {
-    return rowSet.getString("sifidMail") to
-      rowSet.getString("sifidPassword")
-  }
-  return null
-}
-
-fun sqlSetServiceUserCommonKey(value: ByteArray) {
-  sqlUpdateById("set serviceUserCommonKey = '${value.toBase64()}'")
-}
-
-fun sqlGetServiceId(): String? = sqlQueryStringById("serviceId")
-fun sqlGetDeviceName(): String? = sqlQueryStringById("deviceName")
-fun sqlGetDeviceToken(): String? = sqlQueryStringById("deviceToken")
-
-fun sqlGetServiceUserCommonKey(): ByteArray? =
-  sqlQueryStringById("serviceUserCommonKey")?.fromBase64()
-
-fun sqlSetItems(items: List<Pair<Int, Int>>) {
-  val sql = "insert or replace into items(uid, id, amount) values(?, ?, ?)"
-  while (true) {
-    try {
-      val stmt = sqlConnection.prepareStatement(sql)
-      items.map{ (k, v) ->
-        stmt.setInt(1, userId)
-        stmt.setInt(2, k)
-        stmt.setInt(3, v)
-        stmt.addBatch()
+  fun sqlUpdate(sql: String) {
+    sqlQueue!!.add {
+      sqlTry<Unit> {
+        sqlStatement.executeUpdate(sql)
+        sqlConnection.commit()
       }
-      stmt.executeBatch()
-      return
-    } catch (e: SQLException) {
-      println("sqlite error: $e")
-      Thread.sleep(1000)
     }
   }
-}
 
-enum class SqlAccountStatus(val value: Int) {
-  Startup(1),
-  TermsAgreement(2),
-  SetName(3),
-  SetNickName(4),
-  SetBirthDay(5),
-  Story1001(6),
-  RuleDescription1(7),
-  Live30001301(8),
-  Story1003(9),
-  RuleDescription2(10),
-  Live31007301(11),
-  SetFavoriteMember(12),
-  TapLovePoint(13),
-  NaviVoice100010004(14),
-  LevelUpCard(15),
-  Training(16),
-  StorySide(17),
-  NewFlag(18),
-  SaveLiveDeck(19),
-  SaveSuit(20),
-  Live31001101(21),
-  DrawGacha(22),
-  TutorialEnd(23),
-  LinkGameService(24);
-
-  companion object {
-    private val map = SqlAccountStatus.values()
-      .associateBy(SqlAccountStatus::value)
-    fun fromInt(type: Int) = map[type]
+  fun sqlUpdateWait(sql: String) {
+    val q = LinkedBlockingQueue<Unit>()
+    sqlQueue!!.add {
+      sqlTry<Unit> {
+        sqlStatement.executeUpdate(sql)
+        sqlConnection.commit()
+        q.add(Unit)
+      }
+    }
+    q.take()
   }
-}
+
+  fun sqlQuery(sql: String): ResultSet =
+    sqlTry { sqlStatement.executeQuery(sql) }
+
+  // ------------------------------------------------------------------
+
+  private val jdbcPath = "jdbc:sqlite:todokete.db" +
+    "?journal_mode=WAL&synchronous=NORMAL&journal_size_limit=500"
+  private val sqlQueue: LinkedBlockingQueue<() -> Unit>?
+  private val sqlConnection = DriverManager.getConnection(jdbcPath)
+  private val sqlStatement = sqlConnection.createStatement()
+
+  private fun <T> sqlTry(f: () -> T): T {
+    while (true) {
+      try { return f() } catch (e: SQLException) {
+        println("sqlite error: $e")
+        Thread.sleep(1000)
+      }
+    }
+  }
+
+  private fun sqlUpdateSync(sql: String) =
+    sqlTry { sqlStatement.executeUpdate(sql) }
+
+  private fun tableExists(name: String): Boolean =
+    sqlQuery("""
+      select name
+      from sqlite_master
+      where type='table' and name='$name'
+    """).next()
+
+  private fun createInfoTable() {
+    sqlUpdateSync("""
+    create table todokete_info(
+      key text primary key,
+      intValue integer,
+      stringValue text
+    )
+    """)
+  }
+
+  private fun createAccountsTable() {
+    sqlUpdateSync("""
+    create table if not exists accounts(
+      id integer primary key,
+      serviceId char[22] not null,
+      authCount integer not null,
+      stars integer not null,
+      lastLogin integer not null,
+      deviceToken char[154] not null,
+      deviceName text not null,
+      sessionKey char[44] not null,
+      sifidMail text,
+      sifidPassword text
+    )
+    """)
+  }
+
+  private fun createItemsTable() {
+    sqlUpdateSync("""
+    create table if not exists items(
+      uid integer not null,
+      id integer not null,
+      amount integer not null,
+      primary key (uid, id)
+    )
+    """)
+  }
+
+  private fun sqlVersion(): Int? {
+    val rowSet = sqlQuery(
+      "select intValue from todokete_info where key = 'version'"
+    )
+    if (rowSet.next()) {
+      return rowSet.getInt("intValue")
+    }
+    return null
+  }
+
+  private fun sqlSetVersion(x: Int) =
+    sqlUpdateSync("""
+      update todokete_info set intValue = $x where key = 'version'
+    """)
+
+  init {
+    sqlConnection.setAutoCommit(false)
+    sqlStatement.setQueryTimeout(30)
+
+    // migrating from legacy databases
+    // lots of crap has piled up here, will remove eventually
+
+    if (!tableExists("accounts")) {
+      println("[db] initializing database")
+      createAccountsTable()
+      createInfoTable()
+      createItemsTable()
+      sqlSetVersion(5)
+      println("[db] done")
+    } else if (!tableExists("todokete_info")) {
+      println("[db] migrating to db version 1")
+      createInfoTable()
+      sqlUpdateSync("alter table accounts add deviceName text")
+      sqlUpdateSync(
+        "alter table accounts add serviceUserCommonKey char[44]")
+      sqlSetVersion(1)
+      println("[db] done")
+    }
+
+    if (sqlVersion()!! < 2) {
+      println("[db] migrating to db version 2")
+      sqlUpdateSync("delete from accounts where lastLogin is null")
+      sqlUpdateSync("alter table accounts rename to accounts_old")
+      createAccountsTable()
+      sqlUpdateSync("insert into accounts select * from accounts_old")
+      sqlUpdateSync("drop table accounts_old")
+      sqlSetVersion(2)
+      println("[db] done")
+    }
+
+    if (sqlVersion()!! < 3) {
+      println("[db] migrating to db version 3")
+      sqlUpdateSync("alter table accounts add sifidMail text")
+      sqlUpdateSync("alter table accounts add sifidPassword text")
+      sqlSetVersion(3)
+      println("[db] done")
+    }
+
+    if (sqlVersion()!! < 4) {
+      println("[db] migrating to db version 4")
+      createItemsTable()
+      sqlSetVersion(4)
+      println("[db] done")
+    }
+
+    if (sqlVersion()!! < 5) {
+      println("[db] migrating to db version 5")
+      sqlUpdateSync("""
+        delete from accounts where
+        stars is null or
+        deviceToken is null or
+        deviceName is null or
+        serviceUserCommonKey is null
+      """)
+      sqlUpdateSync("alter table accounts rename to accounts_old")
+      createAccountsTable()
+      sqlUpdateSync("""
+        insert into accounts (id, serviceId, authCount, stars, lastLogin,
+          deviceToken, deviceName, sessionKey, sifidMail, sifidPassword)
+          select id, serviceId, authCount, stars, lastLogin, deviceToken,
+            deviceName, serviceUserCommonKey, sifidMail, sifidPassword
+          from accounts_old
+      """)
+      sqlUpdateSync("drop table accounts_old")
+      sqlSetVersion(5)
+      println("[db] done")
+    }
+
+    sqlConnection.commit()
+
+    sqlQueue = LinkedBlockingQueue<() -> Unit>()
+    thread {
+      while (true) {
+        val f = sqlQueue.take()
+        f()
+      }
+    }
+  }
+} // companion object
 } // AllStarsClient
 
 // ------------------------------------------------------------------------
+// cli stuff
 
 fun randomLine(file: String): String? {
   var n = 0
@@ -3023,7 +2889,7 @@ fun readNum(s: InputStream, buf: ByteArray): Int {
 
 // automatically downloads and extracts endpoint, startup key, hashes
 // from the latest game's apk
-fun getConfigFromRemoteApk(download: Boolean = true): AllStarsConfig {
+fun getConfigFromRemoteApk(download: Boolean = false): AllStarsConfig {
   if (!download) {
     while (true) {
       try {
@@ -3212,40 +3078,43 @@ fun getConfigFromRemoteApk(download: Boolean = true): AllStarsConfig {
   return res
 }
 
-fun threadLoop(f: () -> Unit, cooldown: Int) {
+inline fun threadLoop(f: () -> Unit, cooldown: Int) {
   while (true) {
     try { f() } catch (e: Exception) {
-      println("E: $e")
+      val sw = StringWriter()
+      val pw = PrintWriter(sw)
+      pw.print("\u001b[31m")
+      e.printStackTrace(pw)
+      pw.print("\u001b[0m\n")
+      print(sw.toString())
     }
     Thread.sleep(cooldown.toLong())
   }
 }
 
-val create: () -> Unit  = {
-  val llas = AllStarsClient(
-    config = getConfigFromRemoteApk(download = false),
+val create: () -> Unit = {
+  AllStarsClient(
+    config = getConfigFromRemoteApk(),
     name = generateName(),
     nickname = generateNickname(),
     deviceName = generateDeviceName(),
     deviceToken = getPushNotificationToken(),
     serviceId = generateServiceId()
   )
-  llas.makeAccount()
+  .makeAccount()
 }
 
 class Create : CliktCommand(help = "Create account") {
-  override fun run() = threadLoop(f=create, cooldown=10000)
+  override fun run() = threadLoop(f = create, cooldown = 2000)
 }
 
 val gifts: () -> Unit = {
   // we specify a device name to set if the account doesn't have one
   val llas = AllStarsClient(
-    config = getConfigFromRemoteApk(download = false),
+    config = getConfigFromRemoteApk(),
     deviceName = generateDeviceName()
   )
   llas.getStaleAccount()?.let {
-    llas.loginAndGetGifts()
-  } ?: llas.getIncompleteAccount()?.let {
     llas.loginAndGetGifts()
   } ?: run {
     println("no accounts that need to be logged in at the moment")
@@ -3257,7 +3126,7 @@ class Gifts : CliktCommand(
   help = "Log in accounts that haven't been logged in 24+h or that " +
     "haven't completed the tutorial and get gifts"
 ) {
-  override fun run() = threadLoop(f=gifts, cooldown=10000)
+  override fun run() = threadLoop(f = gifts, cooldown = 2000)
 }
 
 class Link : CliktCommand(help = "Link a sifid to an account") {
@@ -3267,7 +3136,7 @@ class Link : CliktCommand(help = "Link a sifid to an account") {
   val password: String by option(help = "sifid.net password")
     .prompt("sifid.net password")
   override fun run() {
-    AllStarsClient(config = getConfigFromRemoteApk(download = false))
+    AllStarsClient(config = getConfigFromRemoteApk())
     .getAccount(id)?.let {
       it.linkSifid(mail = mail, password = password)
     } ?: run {
@@ -3276,42 +3145,24 @@ class Link : CliktCommand(help = "Link a sifid to an account") {
   }
 }
 
-val update: () -> Unit = { getConfigFromRemoteApk() }
+val update: () -> Unit = { getConfigFromRemoteApk(download = true) }
 
 class Update : CliktCommand(help = "Polls apkpure for updates") {
   override fun run() =
-    threadLoop(f=update, cooldown=60000)
+    threadLoop(f = update, cooldown = 60000)
 }
 
-val createAndGifts: () -> Unit = {
-  // we specify a device name to set if the account doesn't have one
-  val llas = AllStarsClient(
-    config = getConfigFromRemoteApk(download = false),
-    deviceName = generateDeviceName()
-  )
-  llas.getStaleAccount()?.let {
-    llas.loginAndGetGifts()
-  } ?: llas.getIncompleteAccount()?.let {
-    llas.loginAndGetGifts()
-  } ?: run {
-    println("no accounts to be logged, creating new ones")
-    AllStarsClient(
-      config = getConfigFromRemoteApk(download = false),
-      name = generateName(),
-      nickname = generateNickname(),
-      deviceName = generateDeviceName(),
-      deviceToken = getPushNotificationToken(),
-      serviceId = generateServiceId()
-    ).makeAccount()
-  }
-}
-
-class Daemon : CliktCommand(
-  help = "Runs update, create+gift in parallel"
-) {
+class Daemon : CliktCommand(help = "Runs everything in parallel") {
+  val createThreads: Int by
+    option(help = "number of account creation threads").int().default(2)
   override fun run() {
-    GlobalScope.launch { threadLoop(f=update, cooldown=60000) }
-    GlobalScope.launch { threadLoop(f=createAndGifts, cooldown=2000) }
+    thread { threadLoop(f = update, cooldown = 60000) }
+    repeat(createThreads) {
+      thread { threadLoop(f = create, cooldown = 2000) }
+    }
+    // TODO: allow multiple gifts threads by moving accounts to a temp
+    // table or something?
+    thread { threadLoop(f = gifts, cooldown = 2000) }
     while (true) {
       // TODO: host http server here that lets you query status n shit
       // TODO: redirect verbose log to split files and show simple monitor
@@ -3326,6 +3177,7 @@ class Todokete : CliktCommand() {
 }
 
 fun main(args: Array<String>) {
-  Todokete().subcommands(Create(), Gifts(), Link(), Update(), Daemon())
+  Todokete()
+    .subcommands(Create(), Gifts(), Link(), Update(), Daemon())
     .main(args)
 }
