@@ -316,7 +316,7 @@ fun callNoRetry(path: String, payload: String): String {
     pathWithQuery += "&mv=" + masterVersion!!
   }
   pathWithQuery += "&id=$nextRequestId"
-  if (userId != 0) {
+  if (requestId > 0 && userId != 0) {
     pathWithQuery += "&u=$userId"
   }
   if ((flags and WithTime) != 0) {
