@@ -32,6 +32,7 @@ import java.io.FileReader
 import java.io.IOException
 import java.io.InputStream
 import java.io.PrintWriter
+import java.net.InetSocketAddress
 import java.io.StringWriter
 import java.lang.Thread
 import java.lang.RuntimeException
@@ -43,6 +44,7 @@ import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.spec.X509EncodedKeySpec
 import java.sql.DriverManager
+import java.sql.Statement
 import java.sql.ResultSet
 import java.sql.SQLException
 import java.util.Base64
@@ -63,6 +65,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.Response
+import com.sun.net.httpserver.HttpServer
+import com.sun.net.httpserver.HttpExchange
 
 // internal globals
 // no thread-unsafe stuff here
@@ -2496,7 +2500,7 @@ public fun getAccount(id: Int): AllStarsClient? =
   sqlLoadAccount("id = $id")
 
 fun commitAccount() =
-  sqlCommitAccount(
+  sql.sqlCommitAccount(
     userId = userId,
     serviceId = serviceId,
     deviceToken = deviceToken,
@@ -2508,10 +2512,8 @@ fun commitAccount() =
     userModel = userModel!!
   )
 
-// ------------------------------------------------------------------------
-
 fun sqlLoadAccount(wherePart: String): AllStarsClient? {
-  val s = sqlQuery("""
+  val s = sql.sqlQuery("""
   select id, serviceId, authCount, deviceToken, deviceName,
   sessionKey, sifidMail, sifidPassword
   from accounts where $wherePart
@@ -2530,7 +2532,11 @@ fun sqlLoadAccount(wherePart: String): AllStarsClient? {
   return this
 }
 
-companion object {
+} // AllStarsClient
+
+// ------------------------------------------------------------------------
+
+private val sql = object {
   fun sqlCommitAccount(
     userId: Int,
     serviceId: String,
@@ -2540,7 +2546,7 @@ companion object {
     sessionKey: ByteArray,
     sifidMail: String?,
     sifidPassword: String?,
-    userModel: UserModel
+    userModel: AllStarsClient.UserModel
   ) = sqlQueue!!.add { sqlTry<Unit> {
     val m = userModel
     var sql = """
@@ -2784,8 +2790,7 @@ companion object {
       }
     }
   }
-} // companion object
-} // AllStarsClient
+} // object sql
 
 // ------------------------------------------------------------------------
 // cli stuff
@@ -3188,12 +3193,174 @@ class Daemon : CliktCommand(help = "Runs everything in parallel") {
     // table or something?
     thread { threadLoop(f = gifts, cooldown = 2000) }
     while (true) {
-      // TODO: host http server here that lets you query status n shit
-      // TODO: redirect verbose log to split files and show simple monitor
-      //       in stdout instead
-      Thread.sleep(Long.MAX_VALUE)
+      try {
+        backend()
+      } catch (e: Exception) {
+        printException(e)
+        Thread.sleep(2000)
+      }
     }
   }
+}
+
+data class BackendItem(
+  val id: Int,
+  var amount: Int,
+  var name: String? = null,
+  var description: String? = null,
+  var thumbnailAssetPath: String? = null,
+  var packName: String? = null,
+  var head: Int? = null
+)
+
+data class BackendAccount(
+  val id: Int,
+  val serviceId: String,
+  val authCount: Int,
+  val stars: Int,
+  val lastLogin: Long,
+  val deviceToken: String,
+  val deviceName: String,
+  val sessionKey: String,
+  val sifidMail: String?,
+  val sifidPassword: String?,
+  var items: MutableList<BackendItem>
+)
+
+fun readOnlyDB(db: String): Statement {
+  val conn = DriverManager.getConnection("jdbc:sqlite:${db}")
+  conn.setAutoCommit(false)
+  return conn.createStatement()
+}
+
+fun dictionaryGet(s: String): String {
+  val split = s.split(".", limit = 2)
+  val dictionary = readOnlyDB("assets/dictionary_ja_${split[0]}.db")
+  val message = dictionary.executeQuery("""
+    select message from m_dictionary where id = '${split[1]}'
+  """)
+  if (message.next()) {
+    return message.getString("message");
+  }
+  return s
+}
+
+fun backend() {
+  val asset = readOnlyDB("assets/asset_a_ja_0.db")
+  val masterdata = readOnlyDB("assets/masterdata.db")
+  val itemCache = mutableMapOf<Int, BackendItem>()
+
+  val fetchItems: (BackendAccount) -> Unit = { account ->
+    val items = sql.sqlQuery("""
+      select * from items where uid=${account.id}
+    """)
+    while (items.next()) {
+      val id = items.getInt("id")
+      if (itemCache.containsKey(id)) {
+        val item = itemCache[id]!!.copy()
+        item.amount = items.getInt("amount")
+        account.items.add(item)
+        continue
+      }
+      var item = BackendItem(
+        id = id,
+        amount = items.getInt("amount")
+      )
+      val flds = "select name, description, thumbnail_asset_path from"
+      val itemMasterdata = masterdata.executeQuery("""
+        $flds m_gacha_ticket where id = ${id} union
+        $flds m_lesson_enhancing_item where id = ${id} union
+        $flds m_training_material where id = ${id} union
+        $flds m_grade_upper where id = ${id} union
+        $flds m_recovery_lp where id = ${id} union
+        $flds m_recovery_ap where id = ${id} union
+        $flds m_accessory_level_up_item where id = ${id} union
+        $flds m_accessory_rarity_up_item where id = ${id} union
+        $flds m_live_skip_ticket where id = ${id} union
+        $flds m_event_marathon_booster_item where id = ${id}
+      """)
+      if (itemMasterdata.next()) {
+        item.name = dictionaryGet(itemMasterdata.getString("name"))
+        item.description =
+          dictionaryGet(itemMasterdata.getString("description"))
+        item.thumbnailAssetPath =
+          itemMasterdata.getString("thumbnail_asset_path")
+      }
+      val itemAsset = asset.executeQuery("""
+        select pack_name, head from texture
+        where asset_path = '${item.thumbnailAssetPath}'
+      """)
+      if (itemAsset.next()) {
+        item.packName = itemAsset.getString("pack_name")
+        item.head = itemAsset.getInt("head")
+      }
+      account.items.add(item)
+      itemCache[item.id] = item
+    }
+  }
+
+  HttpServer.create(InetSocketAddress(6868), 0).apply {
+    val context: (String, (http: HttpExchange) -> Unit) -> Unit =
+    { path, f ->
+      createContext(path) { http ->
+        try { f(http) } catch (e: Exception) {
+          printException(e)
+          http.sendResponseHeaders(500, 0)
+        }
+        http.responseBody.close()
+      }
+    }
+    context("/texture") { http ->
+      val url = HttpUrl.parse(
+        "http://" + http.getRequestHeaders().getFirst("Host") +
+        http.getRequestURI()
+      );
+      val packName = url!!.queryParameter("packName")
+      val head = url.queryParameter("head")
+      http.responseHeaders.add("Access-Control-Allow-Origin", "*")
+      if (packName == null || head == null) {
+        http.sendResponseHeaders(404, 0)
+      } else {
+        http.responseHeaders.add("Content-Type", "image/png")
+        http.sendResponseHeaders(200, 0)
+        File("assets/texture/${packName}_${head}.png")
+          .inputStream().copyTo(http.responseBody)
+      }
+    }
+    context("/accounts") { http ->
+      val s = sql.sqlQuery("select * from accounts")
+      val results = mutableListOf<BackendAccount>()
+      while (s.next()) {
+        results.add(BackendAccount(
+          id = s.getInt("id"),
+          serviceId = s.getString("serviceId"),
+          authCount = s.getInt("authCount"),
+          lastLogin = s.getLong("lastLogin"),
+          deviceToken = s.getString("deviceToken"),
+          deviceName = s.getString("deviceName"),
+          sessionKey = s.getString("sessionKey"),
+          stars = s.getInt("stars"),
+          sifidMail = s.getString("sifidMail"),
+          sifidPassword = s.getString("sifidPassword"),
+          items = mutableListOf<BackendItem>()
+        ))
+      }
+      for (account in results) {
+        fetchItems(account)
+      }
+      http.responseHeaders.add("Content-Type", "application/json")
+      http.responseHeaders.add("Access-Control-Allow-Origin", "*")
+      http.sendResponseHeaders(200, 0)
+      PrintWriter(http.responseBody, true).use {
+        gson.toJson(results, it)
+      }
+    }
+    start()
+  }
+}
+
+class Backend : CliktCommand(help = "Hosts the json back-end, port 6868") {
+  override fun run() = backend()
 }
 
 class Todokete : CliktCommand() {
@@ -3202,6 +3369,6 @@ class Todokete : CliktCommand() {
 
 fun main(args: Array<String>) {
   Todokete()
-    .subcommands(Create(), Gifts(), Link(), Update(), Daemon())
+    .subcommands(Create(), Gifts(), Link(), Update(), Daemon(), Backend())
     .main(args)
 }

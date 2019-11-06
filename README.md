@@ -93,6 +93,15 @@ cd ~/todokete
 - [x] link sifid.net account
 - [x] automatically download apk and parse strings and hashes
 
+# backend progress
+this is very rough at the moment, I just needed a quick hack to visualize
+accounts and items from the temporary front-end I'm developing. it
+literally just dumps all the accounts and items at once as json when you
+request `/accounts` and lets you get decrypted textures by pak name and
+offset.  this requires having an "assets" folder that contains a texture
+folder with the decrypted folder as well as the decrypted game databases
+(`masterdata.db`, `asset_a_ja_0.db` and all the dictionary db's)
+
 # protocol overview
 the body of each request is a json array that contains two elements
 
