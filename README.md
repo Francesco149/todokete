@@ -187,12 +187,15 @@ apis that return your password:
   the linked service id
 - `/dataLink/fetchGameServiceData` same as above but it's an authenticated
   request signed with your password
-- [x] `/dataLink/fetchSchoolIdolFestivalIdDataAfterLogin`
+- `/dataLink/fetchSchoolIdolFestivalIdDataAfterLogin`
   get accounts associated with this sifid. it returns link data like
   fetchGameServiceData
 
 as soon as you obtain your password, you should change your sessionKey from
 the startup key to the password and sign all authenticated requests with it
+
+once you call `/login/login` with your password, you will get yet another
+xored `authorization_key` which is temporary for that particular session
 
 the startup key is only used for fetchGameServiceDataBeforeLogin and
 startup as far as I know

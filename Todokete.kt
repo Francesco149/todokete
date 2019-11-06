@@ -277,6 +277,7 @@ fun hmacSha1(key: ByteArray, data: ByteArray): String {
 
 var userId: Int = 0 // obtained after startup, or known before login
 var requestId = 0 // incremented after every successful request
+var temporarySessionKey: ByteArray? = null
 var sessionKey = config.StartupKey.toByteArray()
 var randomBytes = Random.nextBytes(32) // regenerated on login/startup
 var flags = 0 // used in call()
@@ -295,8 +296,8 @@ val WithMasterVersion = 1 shl 1
 val WithTime = 1 shl 2
 val PrintHeaders = 1 shl 3
 
-fun call(path: String, payload: String): String {
-  repeat (20) {
+fun call(path: String, payload: String, retries: Int = 20): String {
+  repeat (retries) {
     try {
       return callNoRetry(path, payload)
     } catch (e: Exception) {
@@ -316,7 +317,7 @@ fun callNoRetry(path: String, payload: String): String {
     pathWithQuery += "&mv=" + masterVersion!!
   }
   pathWithQuery += "&id=$nextRequestId"
-  if (requestId > 0 && userId != 0) {
+  if (userId != 0) {
     pathWithQuery += "&u=$userId"
   }
   if ((flags and WithTime) != 0) {
@@ -324,9 +325,10 @@ fun callNoRetry(path: String, payload: String): String {
   }
   println("-> POST $pathWithQuery")
   val hashData = pathWithQuery + " " + payload
-  val key = if (requestId > 0) sessionKey
-    else config.StartupKey.toByteArray()
-  val hash = hmacSha1(key, hashData.toByteArray())
+  val key =
+    if (temporarySessionKey != null) temporarySessionKey
+    else sessionKey
+  val hash = hmacSha1(key!!, hashData.toByteArray())
   val json = """[$payload,"$hash"]"""
   println("-> $json")
   val JSON = MediaType.parse("application/json")
@@ -992,8 +994,9 @@ fun assetStateLogGenerateV2(): String {
   return signatures.toByteArray().xor(xorBytes).toBase64()
 }
 
-fun login(): LoginResponse? {
+fun login(retries: Int = 20): LoginResponse? {
   val result = call(
+    retries = retries,
     path = "/login/login",
     payload = gson.toJson(LoginRequest(
       user_id = userId,
@@ -2307,28 +2310,38 @@ public fun makeAccount() {
 }
 
 fun performLogin() {
-  if (requestId == 0) {
-    val fetchResponse = fetchGameServiceDataBeforeLogin()!!
-    // not sure if this is a recent change but the stored sessionKey's
-    // from startup are not matching atm
-    sessionKey = fetchResponse.data!!.linked_data.service_user_common_key
-    randomDelay(1000)
+  var loginResponse: LoginResponse?
+  try {
+    loginResponse = login(retries = 0)
+  } catch (e: Exception) {
+    loginResponse = null
   }
-  var loginResponse = login()!!
+  if (loginResponse == null) {
+    // our stored key is incorrect, retrieve it
+    userId = 0
+    sessionKey = config.StartupKey.toByteArray()
+    val fetchResponse = fetchGameServiceDataBeforeLogin()!!
+    val linkedData = fetchResponse.data!!.linked_data
+    sessionKey = linkedData.service_user_common_key
+    userId = linkedData.user_id
+    randomDelay(1000)
+    loginResponse = login()!!
+  }
   if (loginResponse.user_model == null) {
     // InvalidAuthCountResponse, sync with what server claims
     authCount = loginResponse.authorization_count!!
     loginResponse = login()!!
   }
   val loginSessionKey = base64Decoder.decode(loginResponse.session_key)
-  sessionKey = loginSessionKey.xor(randomBytes)
+  temporarySessionKey = loginSessionKey.xor(randomBytes)
   userModel = loginResponse.user_model
   // TODO: better tracking of userModel changes
 }
 
 fun getGiftsAndCommitAccount() {
   randomDelay(9000)
-  fetchGameServiceData()!!
+  val fetchResponse = fetchGameServiceData()!!
+  sessionKey = fetchResponse.data.service_user_common_key
   var bstrapResponse =
     fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10, 11))!!
   // TODO: figure out what type are comeback, event_3d and birthday bonuses
