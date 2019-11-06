@@ -2305,6 +2305,10 @@ public fun makeAccount() {
 }
 
 fun performLogin() {
+  if (requestId == 0) {
+    fetchGameServiceDataBeforeLogin()!!
+    randomDelay(1000)
+  }
   var loginResponse = login()!!
   if (loginResponse.user_model == null) {
     // InvalidAuthCountResponse, sync with what server claims
