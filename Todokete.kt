@@ -12,6 +12,7 @@ import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.prompt
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.types.int
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -3184,6 +3185,9 @@ class Update : CliktCommand(help = "Polls apkpure for updates") {
 class Daemon : CliktCommand(help = "Runs everything in parallel") {
   val createThreads: Int by
     option(help = "number of account creation threads").int().default(2)
+  val withBackend: Boolean by
+    option("--backend", "-b", help = "enable to host the backend")
+      .flag("--no-backend", "-B", default = false)
   override fun run() {
     thread { threadLoop(f = update, cooldown = 60000) }
     repeat(createThreads) {
@@ -3194,7 +3198,11 @@ class Daemon : CliktCommand(help = "Runs everything in parallel") {
     thread { threadLoop(f = gifts, cooldown = 2000) }
     while (true) {
       try {
-        backend()
+        if (withBackend) {
+          backend()
+        } else {
+          Thread.sleep(Long.MAX_VALUE)
+        }
       } catch (e: Exception) {
         printException(e)
         Thread.sleep(2000)
