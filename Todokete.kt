@@ -324,7 +324,9 @@ fun callNoRetry(path: String, payload: String): String {
   }
   println("-> POST $pathWithQuery")
   val hashData = pathWithQuery + " " + payload
-  val hash = hmacSha1(sessionKey, hashData.toByteArray())
+  val key = if (requestId > 0) sessionKey
+    else config.StartupKey.toByteArray()
+  val hash = hmacSha1(key, hashData.toByteArray())
   val json = """[$payload,"$hash"]"""
   println("-> $json")
   val JSON = MediaType.parse("application/json")
@@ -2306,7 +2308,10 @@ public fun makeAccount() {
 
 fun performLogin() {
   if (requestId == 0) {
-    fetchGameServiceDataBeforeLogin()!!
+    val fetchResponse = fetchGameServiceDataBeforeLogin()!!
+    // not sure if this is a recent change but the stored sessionKey's
+    // from startup are not matching atm
+    sessionKey = fetchResponse.data!!.linked_data.service_user_common_key
     randomDelay(1000)
   }
   var loginResponse = login()!!
