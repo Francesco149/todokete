@@ -73,11 +73,13 @@ run() {
   fi
   name="$1"
   shift
+  jparams="-Dsun.net.httpserver.maxReqTime=30000"
+  jparams="$jparams -Dsun.net.httpserver.maxRspTime=30000"
   params="${@:-create}"
   cp="${classpath}${classpath_separator}${tmpjar}"
-  java -cp "$cp" "${name}Kt" $params
+  java $jparams -cp "$cp" "${name}Kt" $params
   while ${LOOP:-false}; do
-    java -cp "$cp" "${name}Kt" $params
+    java $jparams -cp "$cp" "${name}Kt" $params
   done
 }
 
