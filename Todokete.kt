@@ -291,7 +291,7 @@ val WithTime = 1 shl 2
 val PrintHeaders = 1 shl 3
 
 fun call(path: String, payload: String): String {
-  while (true) {
+  repeat (20) {
     try {
       return callNoRetry(path, payload)
     } catch (e: Exception) {
@@ -300,6 +300,7 @@ fun call(path: String, payload: String): String {
       Thread.sleep(2000)
     }
   }
+  return callNoRetry(path, payload)
 }
 
 fun callNoRetry(path: String, payload: String): String {

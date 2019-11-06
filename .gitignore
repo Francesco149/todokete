@@ -2,6 +2,6 @@
 *.log
 *.db*
 node_modules
-texture
+assets
 *.xapk
 config.json
