@@ -3239,8 +3239,6 @@ class Daemon : CliktCommand(help = "Runs everything in parallel") {
     repeat(createThreads) {
       thread { threadLoop(f = create, cooldown = 2000) }
     }
-    // TODO: allow multiple gifts threads by moving accounts to a temp
-    // table or something?
     thread {
       threadLoop(
         f = { gifts(giftsThreads) },
