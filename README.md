@@ -86,7 +86,7 @@ cd ~/todokete
 - [x] store accounts in a database
 - [x] log in existing accounts
 - [ ] configurable endpoint and other version/region tied things
-- [x] multithread support (only for account creation at the moment)
+- [x] multithread support
 - [ ] store full request logs for each account
 - [ ] a way to view and filter all logs combined
 - [ ] proxy support

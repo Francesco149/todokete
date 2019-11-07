@@ -2531,13 +2531,6 @@ public fun linkSifid(mail: String, password: String): Boolean {
   return true
 }
 
-// picks a random account that hasn't been logged in hoursAgo hours or more
-// then sets up the client to log it in. returns self
-public fun getStaleAccount(hoursAgo: Long = 24): AllStarsClient? {
-  val old = System.currentTimeMillis() - 3600000.toLong() * hoursAgo
-  return sqlLoadAccount("lastLogin < $old")
-}
-
 // load account by id and set up the client to log it in. returns self
 public fun getAccount(id: Int): AllStarsClient? =
   sqlLoadAccount("id = $id")
@@ -3171,25 +3164,43 @@ class Create : CliktCommand(help = "Create account") {
   override fun run() = threadLoop(f = create, cooldown = 2000)
 }
 
-val gifts: () -> Unit = {
-  // we specify a device name to set if the account doesn't have one
-  val llas = AllStarsClient(
-    config = getConfigFromRemoteApk(),
-    deviceName = generateDeviceName()
-  )
-  llas.getStaleAccount()?.let {
-    llas.loginAndGetGifts()
-  } ?: run {
-    println("no accounts that need to be logged in at the moment")
-    Thread.sleep(600000)
+val gifts: (Int) -> Unit = { threads ->
+  // we must query the database first and then launch our threads with
+  // pre-fetched accounts. this way we don't pull the same accounts from
+  // multiple threads and there's no concurrecy issues
+  val old = System.currentTimeMillis() - 3600000.toLong() * 24
+  val todokete = readOnlyDB("todokete.db")
+  val rs = todokete.executeQuery("""
+    select id from accounts where lastLogin < $old order by lastLogin asc
+    limit $threads
+  """)
+  val handles = mutableListOf<Thread>()
+  repeat(threads) {
+    if (!rs.next()) {
+      println("no more stale accounts, resting for a bit...")
+      Thread.sleep(600000)
+    }
+    val id = rs.getInt("id");
+    handles.add(thread {
+      AllStarsClient(config = getConfigFromRemoteApk())
+      .getAccount(id)?.let {
+        it.loginAndGetGifts()
+      } ?: run {
+        println("could not load account $id")
+      }
+    })
   }
+  handles.map { it.join() }
 }
 
 class Gifts : CliktCommand(
   help = "Log in accounts that haven't been logged in 24+h or that " +
     "haven't completed the tutorial and get gifts"
 ) {
-  override fun run() = threadLoop(f = gifts, cooldown = 2000)
+  val threads: Int by
+    option(help = "increase this to login multiple accounts in parallel")
+    .int().default(1)
+  override fun run() = threadLoop(f = { gifts(threads) }, cooldown = 2000)
 }
 
 class Link : CliktCommand(help = "Link a sifid to an account") {
@@ -3217,7 +3228,9 @@ class Update : CliktCommand(help = "Polls apkpure for updates") {
 
 class Daemon : CliktCommand(help = "Runs everything in parallel") {
   val createThreads: Int by
-    option(help = "number of account creation threads").int().default(2)
+    option(help = "parallel account creation threads").int().default(4)
+  val giftsThreads: Int by
+    option(help = "parallel login threads").int().default(4)
   val withBackend: Boolean by
     option("--backend", "-b", help = "enable to host the backend")
       .flag("--no-backend", "-B", default = false)
@@ -3228,7 +3241,12 @@ class Daemon : CliktCommand(help = "Runs everything in parallel") {
     }
     // TODO: allow multiple gifts threads by moving accounts to a temp
     // table or something?
-    thread { threadLoop(f = gifts, cooldown = 2000) }
+    thread {
+      threadLoop(
+        f = { gifts(giftsThreads) },
+        cooldown = 2000
+      )
+    }
     while (true) {
       try {
         if (withBackend) {
