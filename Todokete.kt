@@ -3263,20 +3263,13 @@ class Daemon : CliktCommand(help = "Runs everything in parallel") {
 data class BackendItem(
   var name: String? = null,
   var description: String? = null,
-  var thumbnailAssetPath: String? = null,
   var packName: String? = null,
   var head: Int? = null
 )
 
 data class BackendAccount(
   val id: Int,
-  val serviceId: String,
-  val authCount: Int,
-  val stars: Int,
   val lastLogin: Long,
-  val deviceToken: String,
-  val deviceName: String,
-  val sessionKey: String,
   val sifidMail: String?,
   var items: MutableMap<Int, Int>
 )
@@ -3330,16 +3323,16 @@ fun backend() {
         item.name = dictionaryGet(itemMasterdata.getString("name"))
         item.description =
           dictionaryGet(itemMasterdata.getString("description"))
-        item.thumbnailAssetPath =
+        val thumbnailAssetPath =
           itemMasterdata.getString("thumbnail_asset_path")
-      }
-      val itemAsset = asset.executeQuery("""
-        select pack_name, head from texture
-        where asset_path = '${item.thumbnailAssetPath}'
-      """)
-      if (itemAsset.next()) {
-        item.packName = itemAsset.getString("pack_name")
-        item.head = itemAsset.getInt("head")
+        val itemAsset = asset.executeQuery("""
+          select pack_name, head from texture
+          where asset_path = '${thumbnailAssetPath}'
+        """)
+        if (itemAsset.next()) {
+          item.packName = itemAsset.getString("pack_name")
+          item.head = itemAsset.getInt("head")
+        }
       }
       itemCache[id] = item
     }
@@ -3390,15 +3383,9 @@ fun backend() {
       while (s.next()) {
         results.add(BackendAccount(
           id = s.getInt("id"),
-          serviceId = s.getString("serviceId"),
-          authCount = s.getInt("authCount"),
           lastLogin = s.getLong("lastLogin"),
-          deviceToken = s.getString("deviceToken"),
-          deviceName = s.getString("deviceName"),
-          sessionKey = s.getString("sessionKey"),
-          stars = s.getInt("stars"),
           sifidMail = s.getString("sifidMail"),
-          items = mutableMapOf()
+          items = mutableMapOf(0 to s.getInt("stars"))
         ))
       }
       for (account in results) {

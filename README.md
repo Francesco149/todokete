@@ -102,6 +102,39 @@ offset.  this requires having an "assets" folder that contains a texture
 folder with the decrypted folder as well as the decrypted game databases
 (`masterdata.db`, `asset_a_ja_0.db` and all the dictionary db's)
 
+endpoints:
+
+* `/accounts` returns an array of all the accounts. the items field is
+  a map of id -> amount.
+  example:
+  ```json
+  [
+    {
+      "id": 123,
+      "lastLogin": 1573140519347,
+      "sifidMail": "nice@me.me",
+      "items": {"0":900,"9015":1}
+    }
+  ]
+  ```
+* `/items` returns a map of all items where the keys are the id's. note
+  that this doesn't return all items in the game, just the ones that
+  the accounts from the last `/accounts` call happen to have.
+  example:
+  ```json
+  {
+    "0": {
+      "name": "stars",
+      "description": "free gacha points",
+      "packName": "i0gvmq",
+      "head": 227544
+    }
+  }
+  ```
+* `/texture?packName=xxx&head=123` gets a texture by packName and head.
+  this can be used to get item icons. only works with png textures at the
+  moment
+
 # protocol overview
 the body of each request is a json array that contains two elements
 
