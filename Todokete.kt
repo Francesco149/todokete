@@ -2647,7 +2647,7 @@ private val sql = object {
   }
 
   fun sqlQuery(sql: String): ResultSet =
-    sqlTry { sqlStatement.executeQuery(sql) }
+    sqlTry { sqlConnection.createStatement().executeQuery(sql) }
 
   // ------------------------------------------------------------------
 
@@ -3254,7 +3254,7 @@ data class BackendAccount(
   val sessionKey: String,
   val sifidMail: String?,
   val sifidPassword: String?,
-  var items: MutableList<BackendItem>
+  var items: MutableMap<Int, BackendItem>
 )
 
 fun readOnlyDB(db: String): Statement {
@@ -3279,6 +3279,7 @@ fun backend() {
   val asset = readOnlyDB("assets/asset_a_ja_0.db")
   val masterdata = readOnlyDB("assets/masterdata.db")
   val itemCache = mutableMapOf<Int, BackendItem>()
+  val defaultGson = GsonBuilder().create()
 
   val fetchItems: (BackendAccount) -> Unit = { account ->
     val items = sql.sqlQuery("""
@@ -3289,7 +3290,7 @@ fun backend() {
       if (itemCache.containsKey(id)) {
         val item = itemCache[id]!!.copy()
         item.amount = items.getInt("amount")
-        account.items.add(item)
+        account.items[id] = item
         continue
       }
       var item = BackendItem(
@@ -3324,7 +3325,7 @@ fun backend() {
         item.packName = itemAsset.getString("pack_name")
         item.head = itemAsset.getInt("head")
       }
-      account.items.add(item)
+      account.items[item.id] = item
       itemCache[item.id] = item
     }
   }
@@ -3372,7 +3373,7 @@ fun backend() {
           stars = s.getInt("stars"),
           sifidMail = s.getString("sifidMail"),
           sifidPassword = s.getString("sifidPassword"),
-          items = mutableListOf<BackendItem>()
+          items = mutableMapOf()
         ))
       }
       for (account in results) {
@@ -3382,7 +3383,7 @@ fun backend() {
       http.responseHeaders.add("Access-Control-Allow-Origin", "*")
       http.sendResponseHeaders(200, 0)
       PrintWriter(http.responseBody, true).use {
-        gson.toJson(results, it)
+        defaultGson.toJson(results, it)
       }
     }
     start()
