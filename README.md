@@ -138,6 +138,24 @@ endpoints:
 * `/texture?packName=xxx&head=123` gets a texture by packName and head.
   this can be used to get item icons. only works with png textures at the
   moment
+* `/sifid?mail=nice@me.me` gets a sif id by mail from sifid.db , please
+   see the frontend documentation below for more info on how to set up this
+   database. if the mail parameter is not specified, a random account that
+   isn't linked to anything is picked
+   example:
+   ```json
+   {
+     "mail": "nice@me.me",
+     "password": "sekrit",
+     "secretQuestion": "Are traps gay?",
+     "secretAnswer": "...",
+     "birthMonth": 12,
+     "birthDay": 1,
+     "birthYear": 1992
+   }
+   ```
+* `/link?id=123123&mail=nice@me.me` links a sif id to an account id. empty
+  response
 
 # protocol overview
 the body of each request is a json array that contains two elements

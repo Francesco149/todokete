@@ -92,6 +92,8 @@ val gson = GsonBuilder()
   .registerTypeAdapterFactory(JsonMapAdapterFactory())
   .create()
 
+val defaultGson = GsonBuilder().create()
+
 // ------------------------------------------------------------------------
 // misc stateless utils and classes
 
@@ -131,7 +133,8 @@ fun readOnlyDB(db: String): Statement {
   val config = SQLiteConfig()
   config.setReadOnly(true)
   val conn = DriverManager
-    .getConnection("jdbc:sqlite:$db", config.toProperties())
+    .getConnection("jdbc:sqlite:$db?synchronous=NORMAL",
+      config.toProperties())
   conn.setAutoCommit(false)
   return conn.createStatement()
 }
@@ -2544,7 +2547,6 @@ fun commitAccount() =
     authCount = authCount + 1,
     sessionKey = sessionKey,
     sifidMail = sifidMail,
-    sifidPassword = sifidPassword,
     userModel = userModel!!
   )
 
@@ -2555,7 +2557,7 @@ fun sqlQuery(sql: String): ResultSet =
 fun sqlLoadAccount(wherePart: String): AllStarsClient? {
   val s = sqlQuery("""
   select id, serviceId, authCount, deviceToken, deviceName,
-  sessionKey, sifidMail, sifidPassword
+  sessionKey, sifidMail
   from accounts where $wherePart
   """)
   if (!s.next()) {
@@ -2568,7 +2570,6 @@ fun sqlLoadAccount(wherePart: String): AllStarsClient? {
   deviceName = s.getString("deviceName")
   sessionKey = s.getString("sessionKey").fromBase64()
   sifidMail = s.getString("sifidMail")
-  sifidPassword = s.getString("sifidPassword")
   return this
 }
 } // AllStarsClient
@@ -2584,16 +2585,15 @@ private val sql = object {
     deviceToken: String,
     sessionKey: ByteArray,
     sifidMail: String?,
-    sifidPassword: String?,
     userModel: AllStarsClient.UserModel
   ) = sqlQueue!!.add { sqlTry<Unit> {
     val m = userModel
     var sql = """
       insert or replace into accounts(
         id, serviceId, authCount, stars, lastLogin, deviceToken, deviceName,
-        sessionKey, sifidMail, sifidPassword
+        sessionKey, sifidMail
       )
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     var stmt = sqlConnection.prepareStatement(sql)
     stmt.setInt(1, userId)
@@ -2605,7 +2605,6 @@ private val sql = object {
     stmt.setString(7, deviceName)
     stmt.setString(8, sessionKey.toBase64())
     stmt.setString(9, sifidMail)
-    stmt.setString(10, sifidPassword)
     stmt.addBatch()
     stmt.execute()
     val items = (
@@ -2683,44 +2682,6 @@ private val sql = object {
       where type='table' and name='$name'
     """).next()
 
-  private fun createInfoTable() {
-    sqlUpdateSync("""
-    create table todokete_info(
-      key text primary key,
-      intValue integer,
-      stringValue text
-    )
-    """)
-  }
-
-  private fun createAccountsTable() {
-    sqlUpdateSync("""
-    create table if not exists accounts(
-      id integer primary key,
-      serviceId char[22] not null,
-      authCount integer not null,
-      stars integer not null,
-      lastLogin integer not null,
-      deviceToken char[154] not null,
-      deviceName text not null,
-      sessionKey char[44] not null,
-      sifidMail text,
-      sifidPassword text
-    )
-    """)
-  }
-
-  private fun createItemsTable() {
-    sqlUpdateSync("""
-    create table if not exists items(
-      uid integer not null,
-      id integer not null,
-      amount integer not null,
-      primary key (uid, id)
-    )
-    """)
-  }
-
   private fun sqlVersion(): Int? {
     val rowSet = sqlQuery(
       "select intValue from todokete_info where key = 'version'"
@@ -2737,76 +2698,86 @@ private val sql = object {
     """)
 
   init {
+    val latestVersion = 6
     sqlConnection.setAutoCommit(false)
     sqlStatement.setQueryTimeout(30)
 
-    // migrating from legacy databases
-    // lots of crap has piled up here, will remove eventually
-
     if (!tableExists("accounts")) {
       println("[db] initializing database")
-      createAccountsTable()
-      createInfoTable()
-      createItemsTable()
-      sqlSetVersion(5)
-      println("[db] done")
-    } else if (!tableExists("todokete_info")) {
-      println("[db] migrating to db version 1")
-      createInfoTable()
-      sqlUpdateSync("alter table accounts add deviceName text")
-      sqlUpdateSync(
-        "alter table accounts add serviceUserCommonKey char[44]")
-      sqlSetVersion(1)
-      println("[db] done")
-    }
-
-    if (sqlVersion()!! < 2) {
-      println("[db] migrating to db version 2")
-      sqlUpdateSync("delete from accounts where lastLogin is null")
-      sqlUpdateSync("alter table accounts rename to accounts_old")
-      createAccountsTable()
-      sqlUpdateSync("insert into accounts select * from accounts_old")
-      sqlUpdateSync("drop table accounts_old")
-      sqlSetVersion(2)
-      println("[db] done")
-    }
-
-    if (sqlVersion()!! < 3) {
-      println("[db] migrating to db version 3")
-      sqlUpdateSync("alter table accounts add sifidMail text")
-      sqlUpdateSync("alter table accounts add sifidPassword text")
-      sqlSetVersion(3)
-      println("[db] done")
-    }
-
-    if (sqlVersion()!! < 4) {
-      println("[db] migrating to db version 4")
-      createItemsTable()
-      sqlSetVersion(4)
-      println("[db] done")
-    }
-
-    if (sqlVersion()!! < 5) {
-      println("[db] migrating to db version 5")
       sqlUpdateSync("""
-        delete from accounts where
-        stars is null or
-        deviceToken is null or
-        deviceName is null or
-        serviceUserCommonKey is null
+      create table todokete_info(
+        key text primary key,
+        intValue integer,
+        stringValue text
+      )
       """)
-      sqlUpdateSync("alter table accounts rename to accounts_old")
-      createAccountsTable()
       sqlUpdateSync("""
-        insert into accounts (id, serviceId, authCount, stars, lastLogin,
-          deviceToken, deviceName, sessionKey, sifidMail, sifidPassword)
-          select id, serviceId, authCount, stars, lastLogin, deviceToken,
-            deviceName, serviceUserCommonKey, sifidMail, sifidPassword
-          from accounts_old
+      create table if not exists accounts(
+        id integer primary key,
+        serviceId char[22] not null,
+        authCount integer not null,
+        stars integer not null,
+        lastLogin integer not null,
+        deviceToken char[154] not null,
+        deviceName text not null,
+        sessionKey char[44] not null,
+        sifidMail text
+      )
+      """)
+      sqlUpdateSync("""
+        create unique index sifidMailIndex if not exists
+        on accounts(sifidMail)
+      """)
+      sqlUpdateSync("""
+      create table if not exists items(
+        uid integer not null,
+        id integer not null,
+        amount integer not null,
+        primary key (uid, id)
+      )
+      """)
+      sqlSetVersion(latestVersion)
+      println("[db] done")
+    }
+
+    if (sqlVersion()!! == 5) {
+      // NOTE
+      // previous legacy db upgrades were broken if the database was older
+      // than 1 version because I didn't duplicate the table creation query
+      // and kept the old one
+      println("[db] migrating v5 -> v6")
+      sqlUpdateSync("alter table accounts rename to accounts_old")
+      sqlUpdateSync("""
+      create table if not exists accounts(
+        id integer primary key,
+        serviceId char[22] not null,
+        authCount integer not null,
+        stars integer not null,
+        lastLogin integer not null,
+        deviceToken char[154] not null,
+        deviceName text not null,
+        sessionKey char[44] not null,
+        sifidMail text
+      )
+      """)
+      sqlUpdateSync("""
+        create unique index if not exists sifidMailIndex
+        on accounts(sifidMail)
+      """)
+      val fields = """
+        id, serviceId, authCount, stars, lastLogin,
+        deviceToken, deviceName, sessionKey, sifidMail
+      """
+      sqlUpdateSync("""
+        insert into accounts ($fields) select $fields from accounts_old
       """)
       sqlUpdateSync("drop table accounts_old")
-      sqlSetVersion(5)
+      sqlSetVersion(6)
       println("[db] done")
+    }
+
+    if (sqlVersion()!! != latestVersion) {
+      println("[db] unsupported version, unable to automatically migrate")
     }
 
     sqlConnection.commit()
@@ -3169,28 +3140,29 @@ val gifts: (Int) -> Unit = { threads ->
   // pre-fetched accounts. this way we don't pull the same accounts from
   // multiple threads and there's no concurrecy issues
   val old = System.currentTimeMillis() - 3600000.toLong() * 24
-  val todokete = readOnlyDB("todokete.db")
-  val rs = todokete.executeQuery("""
-    select id from accounts where lastLogin < $old order by lastLogin asc
-    limit $threads
-  """)
-  val handles = mutableListOf<Thread>()
-  repeat(threads) {
-    if (!rs.next()) {
-      println("no more stale accounts, resting for a bit...")
-      Thread.sleep(600000)
-    }
-    val id = rs.getInt("id");
-    handles.add(thread {
-      AllStarsClient(config = getConfigFromRemoteApk())
-      .getAccount(id)?.let {
-        it.loginAndGetGifts()
-      } ?: run {
-        println("could not load account $id")
+  readOnlyDB("todokete.db").use { todokete ->
+    val rs = todokete.executeQuery("""
+      select id from accounts where lastLogin < $old order by lastLogin asc
+      limit $threads
+    """)
+    val handles = mutableListOf<Thread>()
+    repeat(threads) {
+      if (!rs.next()) {
+        println("no more stale accounts, resting for a bit...")
+        Thread.sleep(600000)
       }
-    })
+      val id = rs.getInt("id");
+      handles.add(thread {
+        AllStarsClient(config = getConfigFromRemoteApk())
+        .getAccount(id)?.let {
+          it.loginAndGetGifts()
+        } ?: run {
+          println("could not load account $id")
+        }
+      })
+    }
+    handles.map { it.join() }
   }
-  handles.map { it.join() }
 }
 
 class Gifts : CliktCommand(
@@ -3274,16 +3246,36 @@ data class BackendAccount(
   var items: MutableMap<Int, Int>
 )
 
+data class BackendSifid(
+  val mail: String,
+  val password: String,
+  val secretQuestion: String,
+  val secretAnswer: String,
+  val birthMonth: Int,
+  val birthDay: Int,
+  val birthYear: Int
+)
+
 fun dictionaryGet(s: String): String {
   val split = s.split(".", limit = 2)
-  val dictionary = readOnlyDB("assets/dictionary_ja_${split[0]}.db")
-  val message = dictionary.executeQuery("""
-    select message from m_dictionary where id = '${split[1]}'
-  """)
-  if (message.next()) {
-    return message.getString("message")
+  readOnlyDB("assets/dictionary_ja_${split[0]}.db").use { dictionary ->
+    val message = dictionary.executeQuery("""
+      select message from m_dictionary where id = '${split[1]}'
+    """)
+    if (message.next()) {
+      return message.getString("message")
+    }
+    return s
   }
-  return s
+}
+
+fun <T> HttpExchange.sendJson(obj: T) {
+  responseHeaders.add("Content-Type", "application/json")
+  responseHeaders.add("Access-Control-Allow-Origin", "*")
+  sendResponseHeaders(200, 0)
+  PrintWriter(responseBody, true).use {
+    defaultGson.toJson(obj, it)
+  }
 }
 
 fun backend() {
@@ -3293,7 +3285,6 @@ fun backend() {
     0 to BackendItem(packName = "i0gvmq", head = 227544, name = "stars",
       description = "free gacha points")
   );
-  val defaultGson = GsonBuilder().create()
 
   val fetchItems: (Statement, BackendAccount) -> Unit = { stmt, account ->
     val items = stmt.executeQuery("""
@@ -3366,36 +3357,61 @@ fun backend() {
           .inputStream().copyTo(http.responseBody)
       }
     }
-    context("/items") { http ->
-      http.responseHeaders.add("Content-Type", "application/json")
-      http.responseHeaders.add("Access-Control-Allow-Origin", "*")
-      http.sendResponseHeaders(200, 0)
-      PrintWriter(http.responseBody, true).use {
-        defaultGson.toJson(itemCache, it)
-      }
-    }
+    context("/items") { http -> http.sendJson(itemCache) }
     context("/accounts") { http ->
       // for some reason it doesn't refresh accounts if I don't reopen
       // the connection. might have something to do with WAL mode
-      val todokete = readOnlyDB("todokete.db")
-      val s = todokete.executeQuery("select * from accounts")
-      val results = mutableListOf<BackendAccount>()
-      while (s.next()) {
-        results.add(BackendAccount(
-          id = s.getInt("id"),
-          lastLogin = s.getLong("lastLogin"),
-          sifidMail = s.getString("sifidMail"),
-          items = mutableMapOf(0 to s.getInt("stars"))
-        ))
+      readOnlyDB("todokete.db").use { todokete ->
+        val s = todokete.executeQuery("select * from accounts")
+        val results = mutableListOf<BackendAccount>()
+        while (s.next()) {
+          results.add(BackendAccount(
+            id = s.getInt("id"),
+            lastLogin = s.getLong("lastLogin"),
+            sifidMail = s.getString("sifidMail"),
+            items = mutableMapOf(0 to s.getInt("stars"))
+          ))
+        }
+        for (account in results) {
+          fetchItems(todokete, account)
+        }
+        http.sendJson(results)
       }
-      for (account in results) {
-        fetchItems(todokete, account)
-      }
-      http.responseHeaders.add("Content-Type", "application/json")
-      http.responseHeaders.add("Access-Control-Allow-Origin", "*")
-      http.sendResponseHeaders(200, 0)
-      PrintWriter(http.responseBody, true).use {
-        defaultGson.toJson(results, it)
+    }
+    context("/sifid") { http ->
+      val url = HttpUrl.parse(
+        "http://" + http.getRequestHeaders().getFirst("Host") +
+        http.getRequestURI()
+      )
+      val mail = url!!.queryParameter("mail")
+      readOnlyDB("sifid.db").use { sifid ->
+        sifid.executeUpdate("attach database 'todokete.db' as todokete")
+        val s = sifid.executeQuery("""
+          select
+          mail, password, secret_question, secret_answer, birth_month,
+          birth_day, birth_year
+          from sifid
+          where ${if (mail == null) "" else "mail = '$mail' and"}
+          not exists (
+            select NULL
+            from todokete.accounts
+            where accounts.sifidMail = sifid.mail
+          )
+          limit 1
+        """)
+        if (!s.next()) {
+          http.sendResponseHeaders(404, 0)
+        } else {
+          http.sendJson(BackendSifid(
+            mail = s.getString("mail"),
+            password = s.getString("password"),
+            secretQuestion = s.getString("secret_question"),
+            secretAnswer = s.getString("secret_answer"),
+            birthMonth = s.getInt("birth_month"),
+            birthDay = s.getInt("birth_day"),
+            birthYear = s.getInt("birth_year")
+          ))
+        }
       }
     }
     start()
