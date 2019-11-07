@@ -3261,8 +3261,6 @@ class Daemon : CliktCommand(help = "Runs everything in parallel") {
 }
 
 data class BackendItem(
-  val id: Int,
-  var amount: Int,
   var name: String? = null,
   var description: String? = null,
   var thumbnailAssetPath: String? = null,
@@ -3280,7 +3278,7 @@ data class BackendAccount(
   val deviceName: String,
   val sessionKey: String,
   val sifidMail: String?,
-  var items: MutableMap<Int, BackendItem>
+  var items: MutableMap<Int, Int>
 )
 
 fun dictionaryGet(s: String): String {
@@ -3298,7 +3296,10 @@ fun dictionaryGet(s: String): String {
 fun backend() {
   val asset = readOnlyDB("assets/asset_a_ja_0.db")
   val masterdata = readOnlyDB("assets/masterdata.db")
-  val itemCache = mutableMapOf<Int, BackendItem>()
+  val itemCache = mutableMapOf<Int, BackendItem>(
+    0 to BackendItem(packName = "i0gvmq", head = 227544, name = "stars",
+      description = "free gacha points")
+  );
   val defaultGson = GsonBuilder().create()
 
   val fetchItems: (Statement, BackendAccount) -> Unit = { stmt, account ->
@@ -3307,16 +3308,11 @@ fun backend() {
     """)
     while (items.next()) {
       val id = items.getInt("id")
+      account.items[id] = items.getInt("amount")
       if (itemCache.containsKey(id)) {
-        val item = itemCache[id]!!.copy()
-        item.amount = items.getInt("amount")
-        account.items[id] = item
         continue
       }
-      var item = BackendItem(
-        id = id,
-        amount = items.getInt("amount")
-      )
+      var item = BackendItem()
       val flds = "select name, description, thumbnail_asset_path from"
       val itemMasterdata = masterdata.executeQuery("""
         $flds m_gacha_ticket where id = $id union
@@ -3345,8 +3341,7 @@ fun backend() {
         item.packName = itemAsset.getString("pack_name")
         item.head = itemAsset.getInt("head")
       }
-      account.items[item.id] = item
-      itemCache[item.id] = item
+      itemCache[id] = item
     }
   }
 
@@ -3376,6 +3371,14 @@ fun backend() {
         http.sendResponseHeaders(200, 0)
         File("assets/texture/${packName}_$head.png")
           .inputStream().copyTo(http.responseBody)
+      }
+    }
+    context("/items") { http ->
+      http.responseHeaders.add("Content-Type", "application/json")
+      http.responseHeaders.add("Access-Control-Allow-Origin", "*")
+      http.sendResponseHeaders(200, 0)
+      PrintWriter(http.responseBody, true).use {
+        defaultGson.toJson(itemCache, it)
       }
     }
     context("/accounts") { http ->
