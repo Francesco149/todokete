@@ -102,6 +102,10 @@ offset.  this requires having an "assets" folder that contains a texture
 folder with the decrypted folder as well as the decrypted game databases
 (`masterdata.db`, `asset_a_ja_0.db` and all the dictionary db's)
 
+it goes without saying that this backend is not meant to be secure and
+should not be exposed on an untrusted network. always keep it on your local
+network, make sure the port is closed to the outside world
+
 endpoints:
 
 * `/accounts` returns an array of all the accounts. the items field is
