@@ -2838,10 +2838,8 @@ fun randomLine(file: String): String? {
   n = 0
   File(file).useLines { lines ->
     for (x in lines) {
+      if (n == line) { return x }
       n += 1
-      if (n == line) {
-        return x
-      }
     }
   }
   return null
