@@ -10,9 +10,9 @@
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.prompt
-import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.types.int
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -24,6 +24,8 @@ import com.google.gson.reflect.TypeToken
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
+import com.sun.net.httpserver.HttpExchange
+import com.sun.net.httpserver.HttpServer
 import com.tylerthrailkill.helpers.prettyprint.pp
 import java.io.BufferedInputStream
 import java.io.File
@@ -33,21 +35,21 @@ import java.io.FileReader
 import java.io.IOException
 import java.io.InputStream
 import java.io.PrintWriter
-import java.net.InetSocketAddress
 import java.io.StringWriter
-import java.lang.Thread
 import java.lang.RuntimeException
+import java.lang.Thread
 import java.lang.reflect.ParameterizedType
 import java.math.BigInteger
+import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.spec.X509EncodedKeySpec
 import java.sql.DriverManager
-import java.sql.Statement
 import java.sql.ResultSet
 import java.sql.SQLException
+import java.sql.Statement
 import java.util.Base64
 import java.util.GregorianCalendar
 import java.util.UUID
@@ -66,8 +68,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.Response
-import com.sun.net.httpserver.HttpServer
-import com.sun.net.httpserver.HttpExchange
+import org.sqlite.SQLiteConfig
 
 // internal globals
 // no thread-unsafe stuff here
@@ -114,6 +115,25 @@ fun prettyPrint(result: String) {
   val pp = GsonBuilder().setPrettyPrinting().create()
   val array = JsonParser.parseString(result).getAsJsonArray()
   println(pp.toJson(array))
+}
+
+private fun <T> sqlTry(f: () -> T): T {
+  while (true) {
+    try { return f() } catch (e: SQLException) {
+      printException(e)
+      println("retrying sql...")
+      Thread.sleep(1000)
+    }
+  }
+}
+
+fun readOnlyDB(db: String): Statement {
+  val config = SQLiteConfig()
+  config.setReadOnly(true)
+  val conn = DriverManager
+    .getConnection("jdbc:sqlite:$db", config.toProperties())
+  conn.setAutoCommit(false)
+  return conn.createStatement()
 }
 
 // generics are a mistake that cause people to come up with useless
@@ -297,7 +317,7 @@ val WithTime = 1 shl 2
 val PrintHeaders = 1 shl 3
 
 fun call(path: String, payload: String, retries: Int = 20): String {
-  repeat (retries) {
+  repeat(retries) {
     try {
       return callNoRetry(path, payload)
     } catch (e: Exception) {
@@ -2535,8 +2555,12 @@ fun commitAccount() =
     userModel = userModel!!
   )
 
+val sqlStatement = readOnlyDB("todokete.db")
+fun sqlQuery(sql: String): ResultSet =
+  sqlTry { sqlStatement.executeQuery(sql) }
+
 fun sqlLoadAccount(wherePart: String): AllStarsClient? {
-  val s = sql.sqlQuery("""
+  val s = sqlQuery("""
   select id, serviceId, authCount, deviceToken, deviceName,
   sessionKey, sifidMail, sifidPassword
   from accounts where $wherePart
@@ -2554,7 +2578,6 @@ fun sqlLoadAccount(wherePart: String): AllStarsClient? {
   sifidPassword = s.getString("sifidPassword")
   return this
 }
-
 } // AllStarsClient
 
 // ------------------------------------------------------------------------
@@ -2646,9 +2669,6 @@ private val sql = object {
     q.take()
   }
 
-  fun sqlQuery(sql: String): ResultSet =
-    sqlTry { sqlConnection.createStatement().executeQuery(sql) }
-
   // ------------------------------------------------------------------
 
   private val jdbcPath = "jdbc:sqlite:todokete.db" +
@@ -2657,18 +2677,11 @@ private val sql = object {
   private val sqlConnection = DriverManager.getConnection(jdbcPath)
   private val sqlStatement = sqlConnection.createStatement()
 
-  private fun <T> sqlTry(f: () -> T): T {
-    while (true) {
-      try { return f() } catch (e: SQLException) {
-        printException(e)
-        println("retrying sql...")
-        Thread.sleep(1000)
-      }
-    }
-  }
-
   private fun sqlUpdateSync(sql: String) =
     sqlTry { sqlStatement.executeUpdate(sql) }
+
+  private fun sqlQuery(sql: String): ResultSet =
+    sqlTry { sqlStatement.executeQuery(sql) }
 
   private fun tableExists(name: String): Boolean =
     sqlQuery("""
@@ -3253,15 +3266,8 @@ data class BackendAccount(
   val deviceName: String,
   val sessionKey: String,
   val sifidMail: String?,
-  val sifidPassword: String?,
   var items: MutableMap<Int, BackendItem>
 )
-
-fun readOnlyDB(db: String): Statement {
-  val conn = DriverManager.getConnection("jdbc:sqlite:${db}")
-  conn.setAutoCommit(false)
-  return conn.createStatement()
-}
 
 fun dictionaryGet(s: String): String {
   val split = s.split(".", limit = 2)
@@ -3270,7 +3276,7 @@ fun dictionaryGet(s: String): String {
     select message from m_dictionary where id = '${split[1]}'
   """)
   if (message.next()) {
-    return message.getString("message");
+    return message.getString("message")
   }
   return s
 }
@@ -3281,8 +3287,8 @@ fun backend() {
   val itemCache = mutableMapOf<Int, BackendItem>()
   val defaultGson = GsonBuilder().create()
 
-  val fetchItems: (BackendAccount) -> Unit = { account ->
-    val items = sql.sqlQuery("""
+  val fetchItems: (Statement, BackendAccount) -> Unit = { stmt, account ->
+    val items = stmt.executeQuery("""
       select * from items where uid=${account.id}
     """)
     while (items.next()) {
@@ -3299,16 +3305,16 @@ fun backend() {
       )
       val flds = "select name, description, thumbnail_asset_path from"
       val itemMasterdata = masterdata.executeQuery("""
-        $flds m_gacha_ticket where id = ${id} union
-        $flds m_lesson_enhancing_item where id = ${id} union
-        $flds m_training_material where id = ${id} union
-        $flds m_grade_upper where id = ${id} union
-        $flds m_recovery_lp where id = ${id} union
-        $flds m_recovery_ap where id = ${id} union
-        $flds m_accessory_level_up_item where id = ${id} union
-        $flds m_accessory_rarity_up_item where id = ${id} union
-        $flds m_live_skip_ticket where id = ${id} union
-        $flds m_event_marathon_booster_item where id = ${id}
+        $flds m_gacha_ticket where id = $id union
+        $flds m_lesson_enhancing_item where id = $id union
+        $flds m_training_material where id = $id union
+        $flds m_grade_upper where id = $id union
+        $flds m_recovery_lp where id = $id union
+        $flds m_recovery_ap where id = $id union
+        $flds m_accessory_level_up_item where id = $id union
+        $flds m_accessory_rarity_up_item where id = $id union
+        $flds m_live_skip_ticket where id = $id union
+        $flds m_event_marathon_booster_item where id = $id
       """)
       if (itemMasterdata.next()) {
         item.name = dictionaryGet(itemMasterdata.getString("name"))
@@ -3345,7 +3351,7 @@ fun backend() {
       val url = HttpUrl.parse(
         "http://" + http.getRequestHeaders().getFirst("Host") +
         http.getRequestURI()
-      );
+      )
       val packName = url!!.queryParameter("packName")
       val head = url.queryParameter("head")
       http.responseHeaders.add("Access-Control-Allow-Origin", "*")
@@ -3354,12 +3360,15 @@ fun backend() {
       } else {
         http.responseHeaders.add("Content-Type", "image/png")
         http.sendResponseHeaders(200, 0)
-        File("assets/texture/${packName}_${head}.png")
+        File("assets/texture/${packName}_$head.png")
           .inputStream().copyTo(http.responseBody)
       }
     }
     context("/accounts") { http ->
-      val s = sql.sqlQuery("select * from accounts")
+      // for some reason it doesn't refresh accounts if I don't reopen
+      // the connection. might have something to do with WAL mode
+      val todokete = readOnlyDB("todokete.db")
+      val s = todokete.executeQuery("select * from accounts")
       val results = mutableListOf<BackendAccount>()
       while (s.next()) {
         results.add(BackendAccount(
@@ -3372,12 +3381,11 @@ fun backend() {
           sessionKey = s.getString("sessionKey"),
           stars = s.getInt("stars"),
           sifidMail = s.getString("sifidMail"),
-          sifidPassword = s.getString("sifidPassword"),
           items = mutableMapOf()
         ))
       }
       for (account in results) {
-        fetchItems(account)
+        fetchItems(todokete, account)
       }
       http.responseHeaders.add("Content-Type", "application/json")
       http.responseHeaders.add("Access-Control-Allow-Origin", "*")
