@@ -181,10 +181,9 @@ class Todokete extends React.Component {
         onChange={(e) => this.mailChanged(e)}
         placeholder="email@example.com"
         value={this.state.mail} />
-      <input type="text"
+      <input type="password"
         onChange={(e) => this.passwordChanged(e)}
         placeholder="passw0rd"
-        type="password"
         value={this.state.password} />
       <button
         className="left-button"
