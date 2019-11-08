@@ -165,6 +165,59 @@ endpoints:
   be logged in anymore and the archived flag will be set to true. empty
   response
 
+# frontend
+I have written a quick n dirty front-end in react that lets you visualize
+accounts and items, as well as link sif id's. you can start it like so
+
+```
+cd frontend
+npm i
+npm start
+```
+
+note: manually linking a sifid takes time. don't spam click the button.
+click it and wait like 30 seconds and it'll finally refresh. ideally you
+want some amount of accounts always pre-linked with `--link-accounts`
+instead. manual linking should be used for special cases
+
+the filter field uses filtrex expressions. you can find more detailed
+info about the syntax here https://github.com/joewalnes/filtrex#expressions
+
+filter fields:
+
+* urtickets: number of ur tickets (item 9015)
+* stars: number of free gacha stars (item 0)
+* sifidMail: set this as filter to only show accounts that have a sif id
+  linked
+* id: account id
+* lastLogin: last login timestamp (unix milliseconds)
+* `hoursAgo(x)`: timestamp for x hours ago (unix milliseconds)
+
+it requires the backend to be running and at the moment must be hosted
+on the same machine/ip that hosts the backend
+
+this can also pull sif id's automatically from a sifid.db sqlite database
+if present. it must be in the backend folder and requires at least these
+fields:
+
+```sql
+create table if not exists sifid(
+  mail text primary key,
+  password char[32] not null,
+  secret_question text not null,
+  secret_answer text not null,
+  birth_month integer not null,
+  birth_day integer not null,
+  birth_year integer not null,
+)
+```
+
+this will allow the frontend to
+
+* automatically pick a random sif id to link from the database
+* automatically copy all necessary linked sif id info for a particular
+  account to the clipboard with a single button press
+
 # protocol overview
 the body of each request is a json array that contains two elements
 

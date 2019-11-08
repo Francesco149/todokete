@@ -1,0 +1,146 @@
+* {
+  font: 12pt "Century Gothic", Futura, sans-serif;
+}
+
+body {
+  color: #ddd;
+  margin: 20px;
+  background-color: #222;
+}
+
+input {
+  background-color: inherit;
+  border: 0;
+  border-bottom: 0.2em solid #446644;
+  color: #ddd;
+  margin-left: 0.3em;
+}
+
+button {
+  background-color: inherit;
+  border: 0;
+  border-bottom: 0.2em solid #666666;
+  color: #ddd;
+  margin-left: 0.3em;
+  width: 100%;
+  -webkit-transition-duration: 0.4s;
+  transition-duration: 0.4s;
+  margin: 0;
+  line-height: 2em;
+  font-weight: bold;
+}
+
+.link-sifid {
+  padding-right: 1em;
+}
+
+.link-sifid button {
+  width: 10em;
+  float: right;
+  line-height: 2.1em;
+}
+
+button.left-button {
+  float: none;
+  margin-left: 0.3em;
+  line-height: 2.1em;
+}
+
+.top-right {
+  float: right;
+  font-size: 0.8em;
+  font-style: italic;
+}
+
+.link-sifid input {
+  line-height: 2em;
+}
+
+button:hover {
+  border-bottom: 0.2em solid #666699;
+}
+
+.container {
+  min-width: 46.5em;
+  padding-right: 2em;
+}
+
+.container span {
+  margin-right: 1.2em;
+}
+
+.invalid-input {
+  border-color: #dd4444;
+}
+
+.account-list {
+  padding: 0;
+}
+
+.account-list li {
+  background-color: inherit;
+  border: 0;
+  padding-bottom: 0.3em;
+  margin-bottom: 1em;
+  display: inline-block;
+  list-style-type: none;
+  background-color: #292929;
+  width: 100%;
+  padding-left: 0.5em;
+  border-bottom: 0.2em solid #997799;
+  -webkit-transition-duration: 0.4s;
+  transition-duration: 0.4s;
+}
+
+li.selected-account {
+  border-color: #666699;
+  box-shadow: 0 0 0.5em #000;
+}
+
+.results-text {
+  font-size: 8pt;
+  position: relative;
+  top: 1em;
+  font-style: italic;
+}
+
+.top-left-text {
+  top: 0.2em;
+  left: -0.5em;
+  font-size: 8pt;
+  position: relative;
+}
+
+.items {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+  padding-top: 1em;
+}
+
+.items li {
+  float: left;
+  margin: 0;
+  margin-left: 0.5em;
+  border: 0;
+  display: inline-block;
+  width: auto;
+  padding: 0;
+}
+
+.items img {
+  width: 3em;
+  height: 3em;
+  vertical-align: middle;
+  margin: 0;
+}
+
+.item-amount {
+  position: relative;
+  top: -1.3em;
+  left: 0.3em;
+  text-shadow: 0 0 0.2em #fff, 0 0 0.2em #fff, 0 0 0.2em #fff;
+  color: #111;
+  font-size: 0.9em;
+  font-weight: bold;
+}
