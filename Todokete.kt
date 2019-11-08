@@ -36,6 +36,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.lang.AutoCloseable
 import java.lang.RuntimeException
 import java.lang.Thread
 import java.lang.reflect.ParameterizedType
@@ -50,6 +51,7 @@ import java.sql.DriverManager
 import java.sql.ResultSet
 import java.sql.SQLException
 import java.sql.Statement
+import java.sql.Connection
 import java.util.Base64
 import java.util.GregorianCalendar
 import java.util.UUID
@@ -129,14 +131,14 @@ private fun <T> sqlTry(f: () -> T): T {
   }
 }
 
-fun readOnlyDB(db: String): Statement {
+fun readOnlyDB(db: String): Connection {
   val config = SQLiteConfig()
   config.setReadOnly(true)
   val conn = DriverManager
     .getConnection("jdbc:sqlite:$db?synchronous=NORMAL",
       config.toProperties())
   conn.setAutoCommit(false)
-  return conn.createStatement()
+  return conn
 }
 
 // generics are a mistake that cause people to come up with useless
@@ -259,7 +261,7 @@ class AllStarsClient(
   val name: String = "",
   var deviceToken: String = "", // fcm push notification token
   var serviceId: String = "" // ideally unique for each account
-) {
+) : AutoCloseable {
 
 // ------------------------------------------------------------------------
 // crypto and other internal utils
@@ -2550,9 +2552,14 @@ fun commitAccount() =
     userModel = userModel!!
   )
 
-val sqlStatement = readOnlyDB("todokete.db")
+val sqlConnection = readOnlyDB("todokete.db")
+val sqlStatement = sqlConnection.createStatement()
 fun sqlQuery(sql: String): ResultSet =
   sqlTry { sqlStatement.executeQuery(sql) }
+
+override fun close() {
+  sqlConnection.close()
+}
 
 fun sqlLoadAccount(wherePart: String): AllStarsClient? {
   val s = sqlQuery("""
@@ -3162,7 +3169,8 @@ val gifts: (Int) -> Unit = { threads ->
   // pre-fetched accounts. this way we don't pull the same accounts from
   // multiple threads and there's no concurrecy issues
   val old = System.currentTimeMillis() - 3600000.toLong() * 24
-  readOnlyDB("todokete.db").use { todokete ->
+  readOnlyDB("todokete.db").use { conn ->
+    val todokete = conn.createStatement()
     val rs = todokete.executeQuery("""
       select id from accounts where lastLogin < $old and archived = 0
       order by lastLogin asc
@@ -3176,11 +3184,12 @@ val gifts: (Int) -> Unit = { threads ->
       }
       val id = rs.getInt("id");
       handles.add(thread {
-        AllStarsClient(config = getConfigFromRemoteApk())
-        .getAccount(id)?.let {
-          it.loginAndGetGifts()
-        } ?: run {
-          println("could not load account $id")
+        AllStarsClient(config = getConfigFromRemoteApk()).use { llas ->
+          llas.getAccount(id)?.let {
+            it.loginAndGetGifts()
+          } ?: run {
+            println("could not load account $id")
+          }
         }
       })
     }
@@ -3205,11 +3214,12 @@ class Link : CliktCommand(help = "Link a sifid to an account") {
   val password: String by option(help = "sifid.net password")
     .prompt("sifid.net password")
   override fun run() {
-    AllStarsClient(config = getConfigFromRemoteApk())
-    .getAccount(id)?.let {
-      it.linkSifid(mail = mail, password = password)
-    } ?: run {
-      println("account $id not found")
+    AllStarsClient(config = getConfigFromRemoteApk()).use { llas ->
+      llas.getAccount(id)?.let {
+        it.linkSifid(mail = mail, password = password)
+      } ?: run {
+        println("account $id not found")
+      }
     }
   }
 }
@@ -3222,7 +3232,8 @@ class Update : CliktCommand(help = "Polls apkpure for updates") {
 }
 
 fun prelink(prelinkCount: Int) {
-  readOnlyDB("todokete.db").use { todokete ->
+  readOnlyDB("todokete.db").use { conn ->
+    val todokete = conn.createStatement()
     var rs = todokete.executeQuery("""
       select count(sifidMail) as numLinked from accounts where archived = 0
     """)
@@ -3244,12 +3255,13 @@ fun prelink(prelinkCount: Int) {
         println("no sif id's left, please refill database")
         return
       }
-      AllStarsClient(config = getConfigFromRemoteApk())
-      .getAccount(rs.getInt("id"))?.let {
-        it.linkSifid(
-          mail = sifid.mail,
-          password = sifid.password
-        )
+      AllStarsClient(config = getConfigFromRemoteApk()).use { llas ->
+        llas.getAccount(rs.getInt("id"))?.let {
+          it.linkSifid(
+            mail = sifid.mail,
+            password = sifid.password
+          )
+        }
       }
     }
   }
@@ -3321,7 +3333,8 @@ data class BackendSifid(
 // gets the first non-linked sif id from sifid.db, or gets full info for
 // a given sifid if mail is not null
 fun getAvailableSifid(mail: String? = null): BackendSifid? {
-  readOnlyDB("sifid.db").use { sifid ->
+  readOnlyDB("sifid.db").use { conn ->
+    val sifid = conn.createStatement()
     sifid.executeUpdate("attach database 'todokete.db' as todokete")
     val s = sifid.executeQuery("""
       select
@@ -3358,7 +3371,8 @@ fun getAvailableSifid(mail: String? = null): BackendSifid? {
 // k.item_desc_9015 . returns the result or the unchanged key if not found
 fun dictionaryGet(s: String): String {
   val split = s.split(".", limit = 2)
-  readOnlyDB("assets/dictionary_ja_${split[0]}.db").use { dictionary ->
+  readOnlyDB("assets/dictionary_ja_${split[0]}.db").use { conn ->
+    val dictionary = conn.createStatement()
     val message = dictionary.executeQuery("""
       select message from m_dictionary where id = '${split[1]}'
     """)
@@ -3385,8 +3399,8 @@ fun HttpExchange.okHttpUrl(): HttpUrl? {
 }
 
 fun backend() {
-  val asset = readOnlyDB("assets/asset_a_ja_0.db")
-  val masterdata = readOnlyDB("assets/masterdata.db")
+  val asset = readOnlyDB("assets/asset_a_ja_0.db").createStatement()
+  val masterdata = readOnlyDB("assets/masterdata.db").createStatement()
   val itemCache = mutableMapOf<Int, BackendItem>(
     0 to BackendItem(packName = "i0gvmq", head = 227544, name = "stars",
       description = "free gacha points")
@@ -3464,7 +3478,8 @@ fun backend() {
     context("/accounts") { http ->
       // for some reason it doesn't refresh accounts if I don't reopen
       // the connection. might have something to do with WAL mode
-      readOnlyDB("todokete.db").use { todokete ->
+      readOnlyDB("todokete.db").use { conn ->
+        val todokete = conn.createStatement()
         val s = todokete.executeQuery("select * from accounts")
         val results = mutableListOf<BackendAccount>()
         while (s.next()) {
@@ -3497,9 +3512,10 @@ fun backend() {
       val mail = url.queryParameter("mail")!!
       val password = url.queryParameter("password")!!
       thread {
-        AllStarsClient(config = getConfigFromRemoteApk())
-        .getAccount(id)?.let {
-          it.linkSifid(mail = mail, password = password)
+        AllStarsClient(config = getConfigFromRemoteApk()).use { llas ->
+          llas.getAccount(id)?.let {
+            it.linkSifid(mail = mail, password = password)
+          }
         }
       }
       http.sendJson("")
