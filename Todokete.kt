@@ -3221,14 +3221,51 @@ class Update : CliktCommand(help = "Polls apkpure for updates") {
     threadLoop(f = update, cooldown = 60000)
 }
 
+fun prelink(prelinkCount: Int) {
+  readOnlyDB("todokete.db").use { todokete ->
+    var rs = todokete.executeQuery("""
+      select count(sifidMail) as numLinked from accounts where archived = 0
+    """)
+    val remaining = prelinkCount - rs.getInt("numLinked")
+    if (remaining <= 0) {
+      println("we have enough sif id's linked, resting for a bit")
+      Thread.sleep(60000)
+      return
+    }
+    rs = todokete.executeQuery("""
+      select id from accounts where sifidMail is null and archived = 0
+      order by stars desc
+      limit $remaining
+    """)
+    while (rs.next()) {
+      // TODO: batch this for better perf
+      val sifid = getAvailableSifid()
+      if (sifid == null) {
+        println("no sif id's left, please refill database")
+        return
+      }
+      AllStarsClient(config = getConfigFromRemoteApk())
+      .getAccount(rs.getInt("id"))?.let {
+        it.linkSifid(
+          mail = sifid.mail,
+          password = sifid.password
+        )
+      }
+    }
+  }
+}
+
 class Daemon : CliktCommand(help = "Runs everything in parallel") {
   val createThreads: Int by
     option(help = "parallel account creation threads").int().default(4)
   val giftsThreads: Int by
     option(help = "parallel login threads").int().default(4)
+  val prelinkCount: Int by
+    option(help = "how many accounts to have linked to a sifid at any " +
+      "given time. this requires a sifid.db, see readme").int().default(50)
   val withBackend: Boolean by
     option("--backend", "-b", help = "enable to host the backend")
-      .flag("--no-backend", "-B", default = false)
+      .flag("--no-backend", "-B", default = true)
   override fun run() {
     thread { threadLoop(f = update, cooldown = 60000) }
     repeat(createThreads) {
@@ -3240,13 +3277,14 @@ class Daemon : CliktCommand(help = "Runs everything in parallel") {
         cooldown = 2000
       )
     }
+    thread { threadLoop(f = { prelink(prelinkCount) }, cooldown = 2000) }
     while (true) {
       try {
         if (withBackend) {
           backend()
-        } else {
-          Thread.sleep(Long.MAX_VALUE)
         }
+        // TODO: cli monitoring here, don't show verbose logs
+        Thread.sleep(Long.MAX_VALUE)
       } catch (e: Exception) {
         printException(e)
         Thread.sleep(2000)
@@ -3280,6 +3318,44 @@ data class BackendSifid(
   val birthYear: Int
 )
 
+// gets the first non-linked sif id from sifid.db, or gets full info for
+// a given sifid if mail is not null
+fun getAvailableSifid(mail: String? = null): BackendSifid? {
+  readOnlyDB("sifid.db").use { sifid ->
+    sifid.executeUpdate("attach database 'todokete.db' as todokete")
+    val s = sifid.executeQuery("""
+      select
+      mail, password, secret_question, secret_answer, birth_month,
+      birth_day, birth_year
+      from sifid where
+      ${if (mail != null)
+        "mail = '$mail'"
+      else """
+        not exists (
+          select NULL
+          from todokete.accounts
+          where accounts.sifidMail = sifid.mail
+        )
+      """}
+        limit 1
+    """)
+    if (s.next()) {
+      return BackendSifid(
+        mail = s.getString("mail"),
+        password = s.getString("password"),
+        secretQuestion = s.getString("secret_question"),
+        secretAnswer = s.getString("secret_answer"),
+        birthMonth = s.getInt("birth_month"),
+        birthDay = s.getInt("birth_day"),
+        birthYear = s.getInt("birth_year")
+      )
+    }
+  }
+  return null
+}
+
+// looks up item string constants in the dictionary databases, such as
+// k.item_desc_9015 . returns the result or the unchanged key if not found
 fun dictionaryGet(s: String): String {
   val split = s.split(".", limit = 2)
   readOnlyDB("assets/dictionary_ja_${split[0]}.db").use { dictionary ->
@@ -3409,38 +3485,10 @@ fun backend() {
     context("/sifid") { http ->
       val url = http.okHttpUrl()!!
       val mail = url.queryParameter("mail")
-      readOnlyDB("sifid.db").use { sifid ->
-        sifid.executeUpdate("attach database 'todokete.db' as todokete")
-        val s = sifid.executeQuery("""
-          select
-          mail, password, secret_question, secret_answer, birth_month,
-          birth_day, birth_year
-          from sifid where
-          ${if (mail != null)
-            "mail = '$mail'"
-          else """
-            not exists (
-              select NULL
-              from todokete.accounts
-              where accounts.sifidMail = sifid.mail
-            )
-          """}
-            limit 1
-        """)
-        if (!s.next()) {
-          http.sendJson("oopsie woopsie the account wu searched for " +
-            "dwosent exist uwu", code = 404)
-        } else {
-          http.sendJson(BackendSifid(
-            mail = s.getString("mail"),
-            password = s.getString("password"),
-            secretQuestion = s.getString("secret_question"),
-            secretAnswer = s.getString("secret_answer"),
-            birthMonth = s.getInt("birth_month"),
-            birthDay = s.getInt("birth_day"),
-            birthYear = s.getInt("birth_year")
-          ))
-        }
+      getAvailableSifid(mail)?.let{ http.sendJson(it) }
+      ?: run {
+        http.sendJson("oopsie woopsie the account wu searched fow " +
+          "dwosent exist uwu", code = 404)
       }
     }
     context("/link") { http ->
