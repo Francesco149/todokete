@@ -2558,7 +2558,7 @@ fun sqlLoadAccount(wherePart: String): AllStarsClient? {
   val s = sqlQuery("""
   select id, serviceId, authCount, deviceToken, deviceName,
   sessionKey, sifidMail
-  from accounts where $wherePart
+  from accounts where $wherePart and archived = 0
   """)
   if (!s.next()) {
     return null
@@ -2577,6 +2577,17 @@ fun sqlLoadAccount(wherePart: String): AllStarsClient? {
 // ------------------------------------------------------------------------
 
 private val sql = object {
+  fun sqlArchiveAccount(userId: Int) = sqlQueue!!.add {
+    sqlTry<Unit> {
+      var stmt = sqlConnection.prepareStatement("""
+        update accounts set archived = 1 where id = ?
+      """)
+      stmt.setInt(1, userId)
+      stmt.execute()
+      sqlConnection.commit()
+    }
+  }
+
   fun sqlCommitAccount(
     userId: Int,
     serviceId: String,
@@ -2698,7 +2709,7 @@ private val sql = object {
     """)
 
   init {
-    val latestVersion = 6
+    val latestVersion = 7
     sqlConnection.setAutoCommit(false)
     sqlStatement.setQueryTimeout(30)
 
@@ -2721,7 +2732,8 @@ private val sql = object {
         deviceToken char[154] not null,
         deviceName text not null,
         sessionKey char[44] not null,
-        sifidMail text
+        sifidMail text,
+        archived integer not null default 0
       )
       """)
       sqlUpdateSync("""
@@ -2773,6 +2785,16 @@ private val sql = object {
       """)
       sqlUpdateSync("drop table accounts_old")
       sqlSetVersion(6)
+      println("[db] done")
+    }
+
+    if (sqlVersion()!! == 6) {
+      println("[db] migrating v6 -> v7")
+      sqlUpdateSync("""
+        alter table accounts
+        add archived integer not null default 0
+      """)
+      sqlSetVersion(7)
       println("[db] done")
     }
 
@@ -3142,7 +3164,8 @@ val gifts: (Int) -> Unit = { threads ->
   val old = System.currentTimeMillis() - 3600000.toLong() * 24
   readOnlyDB("todokete.db").use { todokete ->
     val rs = todokete.executeQuery("""
-      select id from accounts where lastLogin < $old order by lastLogin asc
+      select id from accounts where lastLogin < $old and archived = 0
+      order by lastLogin asc
       limit $threads
     """)
     val handles = mutableListOf<Thread>()
@@ -3243,7 +3266,8 @@ data class BackendAccount(
   val id: Int,
   val lastLogin: Long,
   val sifidMail: String?,
-  var items: MutableMap<Int, Int>
+  var items: MutableMap<Int, Int>,
+  val archived: Int
 )
 
 data class BackendSifid(
@@ -3269,13 +3293,19 @@ fun dictionaryGet(s: String): String {
   }
 }
 
-fun <T> HttpExchange.sendJson(obj: T) {
+fun <T> HttpExchange.sendJson(obj: T, code: Int = 200) {
   responseHeaders.add("Content-Type", "application/json")
   responseHeaders.add("Access-Control-Allow-Origin", "*")
-  sendResponseHeaders(200, 0)
+  sendResponseHeaders(code, 0)
   PrintWriter(responseBody, true).use {
     defaultGson.toJson(obj, it)
   }
+}
+
+fun HttpExchange.okHttpUrl(): HttpUrl? {
+  return HttpUrl.parse(
+    "http://" + getRequestHeaders().getFirst("Host") + getRequestURI()
+  )
 }
 
 fun backend() {
@@ -3335,17 +3365,14 @@ fun backend() {
       createContext(path) { http ->
         try { f(http) } catch (e: Exception) {
           printException(e)
-          http.sendResponseHeaders(500, 0)
+          http.sendJson("oreru~", code = 500)
         }
         http.responseBody.close()
       }
     }
     context("/texture") { http ->
-      val url = HttpUrl.parse(
-        "http://" + http.getRequestHeaders().getFirst("Host") +
-        http.getRequestURI()
-      )
-      val packName = url!!.queryParameter("packName")
+      val url = http.okHttpUrl()!!
+      val packName = url.queryParameter("packName")
       val head = url.queryParameter("head")
       http.responseHeaders.add("Access-Control-Allow-Origin", "*")
       if (packName == null || head == null) {
@@ -3369,7 +3396,8 @@ fun backend() {
             id = s.getInt("id"),
             lastLogin = s.getLong("lastLogin"),
             sifidMail = s.getString("sifidMail"),
-            items = mutableMapOf(0 to s.getInt("stars"))
+            items = mutableMapOf(0 to s.getInt("stars")),
+            archived = s.getInt("archived")
           ))
         }
         for (account in results) {
@@ -3379,28 +3407,29 @@ fun backend() {
       }
     }
     context("/sifid") { http ->
-      val url = HttpUrl.parse(
-        "http://" + http.getRequestHeaders().getFirst("Host") +
-        http.getRequestURI()
-      )
-      val mail = url!!.queryParameter("mail")
+      val url = http.okHttpUrl()!!
+      val mail = url.queryParameter("mail")
       readOnlyDB("sifid.db").use { sifid ->
         sifid.executeUpdate("attach database 'todokete.db' as todokete")
         val s = sifid.executeQuery("""
           select
           mail, password, secret_question, secret_answer, birth_month,
           birth_day, birth_year
-          from sifid
-          where ${if (mail == null) "" else "mail = '$mail' and"}
-          not exists (
-            select NULL
-            from todokete.accounts
-            where accounts.sifidMail = sifid.mail
-          )
-          limit 1
+          from sifid where
+          ${if (mail != null)
+            "mail = '$mail'"
+          else """
+            not exists (
+              select NULL
+              from todokete.accounts
+              where accounts.sifidMail = sifid.mail
+            )
+          """}
+            limit 1
         """)
         if (!s.next()) {
-          http.sendResponseHeaders(404, 0)
+          http.sendJson("oopsie woopsie the account wu searched for " +
+            "dwosent exist uwu", code = 404)
         } else {
           http.sendJson(BackendSifid(
             mail = s.getString("mail"),
@@ -3413,6 +3442,25 @@ fun backend() {
           ))
         }
       }
+    }
+    context("/link") { http ->
+      val url = http.okHttpUrl()!!
+      val id = url.queryParameter("id")!!.toInt()
+      val mail = url.queryParameter("mail")!!
+      val password = url.queryParameter("password")!!
+      thread {
+        AllStarsClient(config = getConfigFromRemoteApk())
+        .getAccount(id)?.let {
+          it.linkSifid(mail = mail, password = password)
+        }
+      }
+      http.sendJson("")
+    }
+    context("/archive") { http ->
+      val url = http.okHttpUrl()!!
+      val id = url.queryParameter("id")!!.toInt()
+      sql.sqlArchiveAccount(id);
+      http.sendJson("")
     }
     start()
   }

@@ -117,7 +117,8 @@ endpoints:
       "id": 123,
       "lastLogin": 1573140519347,
       "sifidMail": "nice@me.me",
-      "items": {"0":900,"9015":1}
+      "items": {"0":900,"9015":1},
+      "archived": 0
     }
   ]
   ```
@@ -154,7 +155,14 @@ endpoints:
      "birthYear": 1992
    }
    ```
-* `/link?id=123123&mail=nice@me.me` links a sif id to an account id. empty
+* `/link?id=123123&mail=nice@me.me&password=passw0rd` links a sif id to an
+  account id. empty response. note that this merely initiates the link
+  process. it will do it in the background, so to make sure the account is
+  actually linked you have to keep polling `/sifid` with the mail you
+  tried to link until it fails, which will mean it is linked. or simply
+  keep polling accounts until it reports it as linked
+* `/archive?id=123123` sets an account as archived, which means it won't
+  be logged in anymore and the archived flag will be set to true. empty
   response
 
 # protocol overview
