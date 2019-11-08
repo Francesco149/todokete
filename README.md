@@ -9,6 +9,12 @@ me and other developers to reverse engineer the api further and test it.
 eventually i want this to be a module you can use to automatically manage
 and create your sifas accounts
 
+# important usage notes
+do not run multiple instances of this client if you don't know what you're
+doing, they will end up fighting eachother and potentially breaking
+accounts. use the daemon mode, which runs everything in one process.
+the individual applets are for dev testing
+
 # build and run (linux)
 temporarily, you need nodejs to run an additional local service that
 generates push notification tokens. this will run on port 6969
