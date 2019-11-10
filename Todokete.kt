@@ -3181,6 +3181,7 @@ val gifts: (Int) -> Unit = { threads ->
       if (!rs.next()) {
         println("no more stale accounts, resting for a bit...")
         Thread.sleep(600000)
+        return@repeat
       }
       val id = rs.getInt("id");
       handles.add(thread {
