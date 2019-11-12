@@ -2744,7 +2744,7 @@ private val sql = object {
       )
       """)
       sqlUpdateSync("""
-        create unique index sifidMailIndex if not exists
+        create unique index if not exists sifidMailIndex
         on accounts(sifidMail)
       """)
       sqlUpdateSync("""
