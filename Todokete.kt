@@ -1971,7 +1971,7 @@ fun fetchGameServiceData(): FetchGameServiceDataResponse? {
 data class LinkGameServiceRequest(val service_id: String)
 data class LinkGameServiceResponse(val empty: Int?) // empty object
 
-fun linkGameService(): LinkGameServiceResponse? {
+fun linkOnStartUpGameService(): LinkGameServiceResponse? {
   val response = call(
     path = "/dataLink/linkOnStartUpGameService",
     payload = gson.toJson(LinkGameServiceRequest(service_id = serviceId))
@@ -2330,7 +2330,7 @@ public fun makeAccount() {
   randomDelay(10000)
   tutorialPhaseEnd()!!
   fetchGameServiceData()!!
-  linkGameService()!!
+  linkOnStartUpGameService()!!
   getGiftsAndCommitAccount()
 }
 
