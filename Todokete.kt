@@ -2389,7 +2389,10 @@ fun getGiftsAndCommitAccount() {
   bstrapResponse = fetchBootstrap(types = listOf(2, 3, 4, 5, 9, 10))!!
   bstrapResponse
     .fetch_bootstrap_notice_response?.super_notices?.lastOrNull()?.let {
-      fetchNoticeDetail(id = it.notice_id)!!
+      if (it.notice_id != 0) {
+        // TODO: not sure why this gives 500 on id 0
+        fetchNoticeDetail(id = it.notice_id)!!
+      }
     }
   fetchNotice()!!
   randomDelay(2000)
