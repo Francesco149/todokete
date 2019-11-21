@@ -2943,6 +2943,8 @@ fun readNum(s: InputStream, buf: ByteArray): Int {
 
 // automatically downloads and extracts endpoint, startup key, hashes
 // from the latest game's apk
+// if override.xapk is present, it will be used and downloading will be
+// skipped
 fun getConfigFromRemoteApk(download: Boolean = false): AllStarsConfig {
   if (!download) {
     while (true) {
@@ -2957,6 +2959,17 @@ fun getConfigFromRemoteApk(download: Boolean = false): AllStarsConfig {
   }
   var localHash: String? = null
   var apkHash: String? = null
+  var apkfile = "sifas.xapk"
+  try {
+    if (File("override.xapk").exists()) {
+      println("using override.xapk")
+      apkfile = "override.xapk"
+      localHash = sha1(apkfile)!!
+      apkHash = localHash
+    }
+  } catch (e: Exception) {
+    // pass
+  }
   while (localHash == null || localHash != apkHash) {
     println("checking for new apk...")
     var html = apkPureRequest(url = "$apkpure/versions").body()!!.string()
@@ -2964,7 +2977,7 @@ fun getConfigFromRemoteApk(download: Boolean = false): AllStarsConfig {
     val hashMatch = sha1Matcher.find(html)!!
     val (hash) = hashMatch.destructured
     apkHash = hash
-    localHash = sha1("sifas.xapk")
+    localHash = sha1(apkfile)
     println("remote hash: $apkHash")
     println(" local hash: $localHash")
     if (localHash != null && localHash == apkHash) {
@@ -2983,7 +2996,7 @@ fun getConfigFromRemoteApk(download: Boolean = false): AllStarsConfig {
     )
     val contentLen = resp.header("Content-Length")!!.toInt()
     val input = BufferedInputStream(resp.body()!!.byteStream())
-    val output = FileOutputStream("sifas.xapk")
+    val output = FileOutputStream(apkfile)
     val buf = ByteArray(8192)
     var total = 0
     while (true) {
@@ -3000,7 +3013,7 @@ fun getConfigFromRemoteApk(download: Boolean = false): AllStarsConfig {
       Thread.sleep(30000)
       continue
     }
-    localHash = sha1("sifas.xapk")
+    localHash = sha1(apkfile)
     if (localHash == null || localHash != apkHash) {
       println("hash still doesn't match, redownloading 10 minutes")
       Thread.sleep(600000)
@@ -3023,10 +3036,10 @@ fun getConfigFromRemoteApk(download: Boolean = false): AllStarsConfig {
   println("extracting info from apk")
 
   // TODO: less nesting here
-  val zip = ZipFile(File("sifas.xapk"))
+  val zip = ZipFile(File(apkfile))
   for (entry in zip.entries()) {
     when (entry.getName()) {
-      "com.klab.lovelive.allstars.apk" -> {
+      "com.klab.lovelive.allstars.apk", "base.apk" -> {
         val zis = ZipInputStream(zip.getInputStream(entry))
         var innerEntry = zis.getNextEntry()
         var foundEndpoint = false
@@ -3101,7 +3114,31 @@ fun getConfigFromRemoteApk(download: Boolean = false): AllStarsConfig {
           }
         }
       }
-      "config.arm64_v8a.apk" -> {
+      "config.arm64_v8a.apk", "split_config.arm64_v8a.apk" -> {
+        val zis = ZipInputStream(zip.getInputStream(entry))
+        var innerEntry = zis.getNextEntry()
+        while (innerEntry != null) {
+          when (innerEntry.getName()) {
+            "lib/arm64-v8a/libil2cpp.so" -> {
+              res.Il2CppSignatures = hashStream(zis)
+              println("il2cpp hashes:")
+              for (x in res.Il2CppSignatures) {
+                println(x.toHexString())
+              }
+            }
+            "lib/arm64-v8a/libjackpot-core.so" -> {
+              res.JackpotSignatures = hashStream(zis)
+              println("libjackpot hashes:")
+              for (x in res.JackpotSignatures) {
+                println(x.toHexString())
+              }
+            }
+            else -> { }
+          }
+          innerEntry = zis.getNextEntry()
+        }
+      }
+      "config.armeabi_v7a.apk",  "split_config.armeabi_v7a.apk" -> {
         val zis = ZipInputStream(zip.getInputStream(entry))
         var innerEntry = zis.getNextEntry()
         while (innerEntry != null) {
